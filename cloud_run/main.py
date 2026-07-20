@@ -252,39 +252,40 @@ def get_or_create_cache(schema_manifest: str, beam_context: str):
 
 def ask_gemini_for_rewrite(old_sql: str, new_sql: str, cache_name, schema_manifest, beam_context) -> str:
     prompt = f"""
-You are an automated BigQuery SQL optimizer.
+You are a Senior Google BigQuery SQL Optimization Engine.
 
-Your job is NOT to write a review.
+Your task is to optimize SQL while preserving identical business logic.
 
-Your job is ONLY to fill the markdown template below.
+You are NOT responsible for calculating performance metrics.
 
-You are provided:
+The application already computes:
 
-- Previous SQL
-- New SQL
-- INFORMATION_SCHEMA metadata
-- Partitioning / clustering metadata
-- Downstream Beam/Spark consumer
+- Previous bytes scanned
+- Current bytes scanned
+- Optimized bytes scanned
+- Bytes saved
+- Percentage reduction
+- Query cost
 
-The downstream consumer is the source of truth.
+Never calculate or estimate any of the above.
 
 ==================================================
 INPUT
 ==================================================
 
-PREVIOUS SQL
+Previous SQL
 
 {old_sql}
 
-CURRENT SQL
+Current SQL
 
 {new_sql}
 
-SCHEMA
+Schema Metadata
 
 {schema_manifest}
 
-DOWNSTREAM CONSUMER
+Downstream Beam/Spark Consumer
 
 {beam_context}
 
@@ -294,144 +295,115 @@ RULES
 
 Business logic must remain identical.
 
-You MAY automatically:
+The downstream consumer is the source of truth.
 
-- Remove unused projected columns
-- Remove unused computed columns
-- Remove unnecessary CTEs
-- Simplify projections
-- Remove dead SQL
+Safe automatic optimizations:
 
-You MUST NOT automatically:
+- Projection pruning
+- Removing unused projected columns
+- Removing unused computed columns
+- Removing dead SQL
+- Removing unnecessary CTEs
+- Simplifying projections
+
+Do NOT automatically:
 
 - Change JOIN type
-- Change JOIN condition
 - Change JOIN order
+- Change JOIN condition
 - Change WHERE conditions
 - Change GROUP BY
 - Change DISTINCT
-- Change window function semantics
-- Change LIMIT
 - Change ORDER BY
-- Change business logic
+- Change window function semantics
+- Change aggregation semantics
+- Change LIMIT
 
-If any of the above could improve performance,
-mention it ONLY under "Needs Human Review".
+If another optimization exists, report it under "human_review".
 
 ==================================================
 STRICTLY FORBIDDEN
 ==================================================
 
-Never write:
+Never output:
 
-- Estimated bytes scanned
-- Estimated cost
-- Estimated savings
-- Percentage reduction
-- Approximate values
-- Example calculations
-- Hypothetical datasets
-- "Assume..."
-- "For example..."
-- "This could save..."
-- "BigQuery is columnar..."
-- SQL tutorials
-- Performance explanations
-- Educational content
+Estimated bytes scanned
 
-The application already computes the exact bytes scanned.
+Estimated savings
 
-Do not mention scan size.
+Estimated cost
 
-Do not mention cost.
+Estimated reduction
 
-Do not mention percentages.
+Estimated percentage
 
-Do not mention performance estimates.
+Approximate values
+
+Dollar calculations
+
+Row count assumptions
+
+Storage assumptions
+
+Hypothetical production examples
+
+BigQuery tutorials
+
+Performance explanations
+
+Long paragraphs
 
 ==================================================
 OUTPUT
 ==================================================
 
-Return ONLY the markdown below.
+Return ONLY valid JSON.
 
-Nothing before it.
+{
+  "business_logic": {
+    "status": "PASS",
+    "reason": "Business logic preserved because all downstream-required columns and query semantics remain unchanged."
+  },
 
-Nothing after it.
+  "optimized_sql": "<complete optimized SQL>",
 
----
+  "summary": "Maximum two sentences summarizing the optimization.",
 
-## Optimized SQL
+  "changes": [
+    {
+      "change": "Removed unused column voltage",
+      "reason": "Not referenced by downstream consumer."
+    },
+    {
+      "change": "Removed unused column station_name",
+      "reason": "Not referenced after JOIN."
+    }
+  ],
 
-```sql
-...
-```
+  "human_review": [
+    "Predicate pushdown",
+    "Partitioning",
+    "Clustering"
+  ]
+}
 
-## Summary
+Rules:
 
-Maximum 2 sentences.
+Return valid JSON only.
 
-## Safe Optimizations Applied
+No markdown.
 
-- bullet
-- bullet
-- bullet
+No explanations outside JSON.
 
-Each bullet must contain ONLY:
+No additional keys.
 
-- what changed
-- why it is safe
+No estimated metrics.
 
-No explanation.
+No educational text.
 
-## Recommendations
+No comments.
 
-Maximum 3 bullets.
-
-Only schema-level recommendations.
-
-Examples:
-
-- Partition by DATE(timestamp)
-- Cluster by region
-
-No explanation.
-
-## Needs Human Review
-
-Maximum 3 bullets.
-
-Only optimizations that may change semantics.
-
-Examples:
-
-- Predicate pushdown
-- JOIN rewrite
-- Aggregation rewrite
-
-If there are none write:
-
-None.
-
-==================================================
-VALIDATION
-==================================================
-
-Before responding verify:
-
-✓ No estimated numbers exist.
-
-✓ No percentages exist.
-
-✓ No dollar amounts exist.
-
-✓ No "Estimated" section exists.
-
-✓ No explanation longer than two sentences.
-
-If any of these conditions are violated, regenerate your answer.
-
-Return ONLY the markdown template.
+No code fences.
 """
 
     if cache_name:
