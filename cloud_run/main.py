@@ -286,13 +286,13 @@ BIGQUERY SCHEMA
 DOWNSTREAM BEAM PIPELINE
 ========================================================
 
-{beam_code}
+{beam_context}
 
 ========================================================
 ORIGINAL SQL
 ========================================================
 
-{sql_text}
+{new_sql}
 
 ========================================================
 ORIGINAL BYTES SCANNED
@@ -648,6 +648,7 @@ def review():
             cache_name,
             schema_manifest,
             beam_context,
+            new_bytes,
         )
 
         # -----------------------------
