@@ -322,6 +322,26 @@ Preserve:
 Never make an optimization that changes the output consumed by downstream Beam code.
 
 ========================================================
+HARD CONSTRAINT — JOIN PRESERVATION
+========================================================
+
+The optimized SQL MUST contain the exact same JOIN clauses as the
+original query — same tables joined, same join type (INNER/LEFT/etc),
+same ON condition, same number of joins.
+
+Do NOT:
+- remove a join, even if you believe the joined columns are unused
+- replace a join with a subquery, EXISTS clause, or IN clause
+- replace a join with a window function or aggregation that
+  approximates the same result
+- merge two joins into one, even if you believe it's equivalent
+
+If you believe a join is unnecessary, do NOT act on that belief.
+Instead, note it in "recommendations" as a suggestion for human
+review. This is a hard rule with no exceptions, including cases
+where removing the join would reduce bytes scanned.
+
+========================================================
 OPTIMIZATION CHECKLIST
 ========================================================
 
