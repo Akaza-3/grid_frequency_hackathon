@@ -25,6 +25,7 @@ import shutil
 import datetime
 import logging
 import re
+import hashlib
 
 import flask
 from google.cloud import bigquery
@@ -210,14 +211,12 @@ def build_schema_manifest(sql_text: str) -> str:
 
     return "\n".join(manifest)
 
-CACHE_DISPLAY_NAME = "grid_schema_beam_cache"
 
-
-def find_existing_cache():
+def find_existing_cache(display_name):
     """Look for a live, non-expired cache with our display name."""
     try:
         for cache in genai_client.caches.list():
-            if cache.display_name == CACHE_DISPLAY_NAME:
+            if cache.display_name == display_name:
                 logger.info(f"Found existing cache: {cache.name} (expires {cache.expire_time})")
                 return cache.name
     except Exception as e:
@@ -226,12 +225,25 @@ def find_existing_cache():
 
 
 def get_or_create_cache(schema_manifest: str, beam_context: str):
-    existing = find_existing_cache()
+    PROMPT_VERSION = "v1"
+    combined = (
+        PROMPT_VERSION
+        + schema_manifest
+        + "\n\n[DOWNSTREAM]\n"
+        + beam_context
+    )
+
+    cache_hash = hashlib.sha256(
+        combined.encode("utf-8")
+    ).hexdigest()[:12]
+
+    display_name = f"grid-schema-{cache_hash}"
+    existing = find_existing_cache(display_name)
     if existing:
         logger.info(f"Reusing existing cache: {existing}")
         return existing
 
-    combined = schema_manifest + "\n\n[DOWNSTREAM CONSUMER CODE]\n" + beam_context
+    
     approx_tokens = len(combined) // 4
     logger.info(f"No existing cache found. Creating new one, manifest ~{approx_tokens} tokens (~{len(combined)} chars)")
     try:
@@ -240,7 +252,7 @@ def get_or_create_cache(schema_manifest: str, beam_context: str):
             config={
                 "contents": [combined],
                 "ttl": "86400s",
-                "display_name": CACHE_DISPLAY_NAME,
+                "display_name": display_name,
             },
         )
         logger.info(f"Context cache created successfully: {cache.name}")
@@ -267,14 +279,6 @@ PREVIOUS SQL
 CURRENT SQL
 
 {new_sql}
-
-SCHEMA METADATA
-
-{schema_manifest}
-
-DOWNSTREAM CONSUMER (Beam / Spark)
-
-{beam_context}
 
 ==================================================
 OBJECTIVE
