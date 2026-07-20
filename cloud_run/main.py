@@ -369,8 +369,7 @@ def review():
     return flask.jsonify({"status": "ok", "changed_files": [c["path"] for c in changed]})
 
 
-@app.route("/", methods=["GET"])for change in changed:
-
+@app.route("/", methods=["GET"])
 def health():
     return "ok"
 
