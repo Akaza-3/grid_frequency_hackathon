@@ -252,29 +252,211 @@ def get_or_create_cache(schema_manifest: str, beam_context: str):
 
 def ask_gemini_for_rewrite(old_sql: str, new_sql: str, cache_name, schema_manifest, beam_context) -> str:
     prompt = f"""
+You are a Senior Google BigQuery SQL Optimization Engineer.
+
+Your task is to optimize the SQL query while preserving EXACT SQL semantics.
+
+==================================================
+INPUT
+==================================================
+
+PREVIOUS SQL
+
+{old_sql}
+
+CURRENT SQL
+
+{new_sql}
+
+SCHEMA METADATA
+
+{schema_manifest}
+
+DOWNSTREAM CONSUMER (Beam / Spark)
+
+{beam_context}
+
+==================================================
+OBJECTIVE
+==================================================
+
+Reduce BigQuery query cost by minimizing bytes scanned while preserving the exact behaviour of the current query.
+
+The optimized query MUST return the same results as the original query.
+
+The downstream consumer is provided only to identify unused columns. It MUST NOT be used to remove SQL operations that affect query semantics.
+
+==================================================
+BUSINESS LOGIC MUST BE PRESERVED
+==================================================
+
+The optimized query MUST preserve ALL of the following:
+
+• Same returned rows
+• Same returned values
+• Same returned ordering
+• Same JOIN behaviour
+• Same filtering behaviour
+• Same aggregation behaviour
+• Same NULL handling
+• Same duplicate behaviour
+• Same window function semantics
+• Same LIMIT behaviour
+• Same DISTINCT behaviour
+
+If preserving any of the above is uncertain, DO NOT modify it.
+
+==================================================
+SAFE AUTOMATIC OPTIMIZATIONS
+==================================================
+
+You MAY automatically:
+
+1. Remove unused projected columns.
+
+2. Remove unused computed columns.
+
+3. Remove expressions whose outputs are never referenced.
+
+4. Simplify SELECT lists.
+
+5. Remove redundant CTEs ONLY IF removing them does not change any SQL semantics.
+
+6. Remove dead SQL that provably has no effect on the final result.
+
+==================================================
+DO NOT AUTOMATICALLY CHANGE
+==================================================
+
+Never automatically:
+
+• Remove JOINs
+• Add JOINs
+• Change JOIN type
+• Change JOIN condition
+• Reorder JOINs
+• Remove ORDER BY
+• Change ORDER BY
+• Remove WHERE clauses
+• Add WHERE clauses
+• Push predicates
+• Change GROUP BY
+• Change HAVING
+• Change DISTINCT
+• Change LIMIT
+• Rewrite window functions
+• Change partitioning logic
+• Change clustering logic
+
+These may only be suggested as recommendations.
+
+==================================================
+ASSUMPTIONS ARE FORBIDDEN
+==================================================
+
+Never assume:
+
+• Primary keys
+• Foreign keys
+• Referential integrity
+• Unique constraints
+• Functional dependencies
+• Data distributions
+• Table sizes
+• Nullability
+• Optimizer behaviour
+
+If an optimization depends on any assumption, DO NOT apply it.
+
+Instead mention it under "Recommendations".
+
+==================================================
+DOWNSTREAM CONSUMER
+==================================================
+
+The downstream consumer may be used ONLY to identify columns that are never referenced.
+
+The downstream consumer MUST NOT be used to:
+
+• Remove joins
+• Remove ordering
+• Remove filters
+• Remove aggregations
+• Remove window functions that affect results
+
+==================================================
+PERFORMANCE RECOMMENDATIONS
+==================================================
+
+Recommendations may include:
+
+• Projection pruning
+• Predicate pushdown
+• Join elimination
+• Partitioning
+• Clustering
+• Materialized views
+
+Recommendations MUST NOT be automatically applied unless they are provably semantics-preserving.
+
+==================================================
+STRICTLY FORBIDDEN
+==================================================
+
+Do NOT output:
+
+• Estimated bytes scanned
+• Estimated savings
+• Estimated costs
+• Estimated percentages
+• Approximate values
+• Assumptions
+• Educational explanations
+• SQL tutorials
+• BigQuery internals
+
+==================================================
+OUTPUT
+==================================================
+
 Return ONLY valid JSON.
 
 {
-  "optimized_sql":"...",
-  "changes":[
-      {
-          "type":"Projection Pruning",
-          "description":"Removed unused column voltage."
-      },
-      {
-          "type":"Dead Code",
-          "description":"Removed unused window function rolling_avg_freq."
-      }
+  "business_logic": {
+    "status": "PASS",
+    "reason": "Business logic preserved."
+  },
+
+  "optimized_sql": "<complete optimized SQL>",
+
+  "summary": "Maximum two sentences.",
+
+  "changes": [
+    {
+      "change": "Removed unused projected column voltage",
+      "reason": "Column is never referenced."
+    }
   ],
-  "recommendations":[
-      "Partition table by DATE(timestamp)",
-      "Cluster table by region"
-  ],
-  "human_review":[
-      "Predicate pushdown",
-      "Join rewrite"
+
+  "recommendations": [
+    "Partition table by DATE(timestamp)",
+    "Cluster table by region)"
   ]
 }
+
+Rules:
+
+Return valid JSON only.
+
+No markdown.
+
+No code fences.
+
+No additional keys.
+
+No comments.
+
+No explanations outside JSON.
 """
 
     if cache_name:
