@@ -1,4 +1,5 @@
 -- resources/sql/grid_readings_query.sql
+--comment 1
 WITH station_stats AS (
   SELECT
     r.*,
