@@ -252,211 +252,186 @@ def get_or_create_cache(schema_manifest: str, beam_context: str):
 
 def ask_gemini_for_rewrite(old_sql: str, new_sql: str, cache_name, schema_manifest, beam_context) -> str:
     prompt = f"""
-You are a Senior Google BigQuery Performance Engineer reviewing a Pull Request.
+You are an automated BigQuery SQL optimizer.
 
-Your objective is to improve BigQuery query performance WITHOUT changing business logic.
+Your job is NOT to write a review.
+
+Your job is ONLY to fill the markdown template below.
 
 You are provided:
 
-1. Previous SQL
-2. New SQL
-3. Table schema from INFORMATION_SCHEMA
-4. Partitioning and clustering metadata
-5. Downstream Beam/Spark consumer code
+- Previous SQL
+- New SQL
+- INFORMATION_SCHEMA metadata
+- Partitioning / clustering metadata
+- Downstream Beam/Spark consumer
 
-The downstream Beam/Spark consumer is the source of truth.
+The downstream consumer is the source of truth.
 
 ==================================================
+INPUT
+==================================================
+
 PREVIOUS SQL
-==================================================
 
 {old_sql}
 
-==================================================
-NEW SQL
-==================================================
+CURRENT SQL
 
 {new_sql}
 
-==================================================
-TABLE SCHEMA
-==================================================
+SCHEMA
 
 {schema_manifest}
 
-==================================================
 DOWNSTREAM CONSUMER
-==================================================
 
 {beam_context}
 
 ==================================================
-REVIEW POLICY
+RULES
 ==================================================
 
-Business logic MUST remain identical.
+Business logic must remain identical.
 
-Safe automatic optimizations include:
+You MAY automatically:
 
-- Projection pruning
-- Removing unused columns
-- Removing unused intermediate projections
-- Removing unnecessary CTEs
-- Removing unused computed columns
-- Simplifying expressions without changing semantics
-- Eliminating dead SQL
+- Remove unused projected columns
+- Remove unused computed columns
+- Remove unnecessary CTEs
+- Simplify projections
+- Remove dead SQL
 
-Optimizations that MUST NOT be applied automatically:
+You MUST NOT automatically:
 
-- Changing JOIN type
-- Changing JOIN order
-- Changing JOIN conditions
-- Changing WHERE conditions
-- Predicate pushdown that changes filtering location
-- GROUP BY rewrites
-- DISTINCT removal
-- Window function rewrites
-- Aggregation rewrites
-- LIMIT changes
-- ORDER BY changes
-- Any modification that changes returned rows
+- Change JOIN type
+- Change JOIN condition
+- Change JOIN order
+- Change WHERE conditions
+- Change GROUP BY
+- Change DISTINCT
+- Change window function semantics
+- Change LIMIT
+- Change ORDER BY
+- Change business logic
 
-If an optimization is potentially beneficial but could change semantics, DO NOT implement it.
-
-Mention it only under "Needs Human Review".
+If any of the above could improve performance,
+mention it ONLY under "Needs Human Review".
 
 ==================================================
-VERY IMPORTANT
+STRICTLY FORBIDDEN
 ==================================================
 
-The application already computes and displays:
-
-- Previous bytes scanned
-- Current bytes scanned
-- Optimized bytes scanned
-- Bytes saved
-- Percentage reduction
-
-These metrics are NOT your responsibility.
-
-NEVER generate:
+Never write:
 
 - Estimated bytes scanned
 - Estimated cost
 - Estimated savings
-- Percentage savings
-- Approximate savings
-- Hypothetical production savings
-- Row count assumptions
-- Storage assumptions
+- Percentage reduction
+- Approximate values
 - Example calculations
-- Dollar calculations
-- "If the table contains..."
+- Hypothetical datasets
 - "Assume..."
 - "For example..."
+- "This could save..."
+- "BigQuery is columnar..."
+- SQL tutorials
+- Performance explanations
+- Educational content
 
-Do not invent any numerical values.
+The application already computes the exact bytes scanned.
 
-If an exact value is unavailable from the provided inputs, omit it completely.
+Do not mention scan size.
 
-==================================================
-YOUR TASK
-==================================================
+Do not mention cost.
 
-1. Verify that business logic is preserved.
+Do not mention percentages.
 
-2. Produce an optimized SQL query.
-
-3. Briefly explain the optimizations that were applied.
-
-4. Recommend additional improvements that require human review.
-
-Do not explain BigQuery fundamentals.
-
-Do not teach SQL.
-
-Do not describe how columnar databases work.
-
-Assume the reviewer is an experienced data engineer.
+Do not mention performance estimates.
 
 ==================================================
-OUTPUT FORMAT
+OUTPUT
 ==================================================
 
-Return ONLY markdown.
+Return ONLY the markdown below.
+
+Nothing before it.
+
+Nothing after it.
+
+---
 
 ## Optimized SQL
 
 ```sql
-<complete optimized SQL>
+...
 ```
-
-## Business Logic Validation
-
-PASS or FAIL
-
-One sentence explaining why.
 
 ## Summary
 
 Maximum 2 sentences.
 
-## Changes Applied
+## Safe Optimizations Applied
 
-Maximum 5 bullet points.
+- bullet
+- bullet
+- bullet
 
-Each bullet must be one sentence.
-
-State only:
+Each bullet must contain ONLY:
 
 - what changed
 - why it is safe
 
-Do not explain BigQuery internals.
-
-Example:
-
-- Removed `voltage` because it is not referenced by downstream Beam code.
+No explanation.
 
 ## Recommendations
 
-Maximum 3 bullet points.
+Maximum 3 bullets.
 
-Only include recommendations that were NOT automatically applied.
+Only schema-level recommendations.
 
 Examples:
 
-- Consider partitioning the table by DATE(timestamp).
-- Consider clustering by region.
-- Consider replacing the LEFT JOIN with an INNER JOIN if referential integrity is guaranteed.
+- Partition by DATE(timestamp)
+- Cluster by region
 
-Do not explain the recommendation.
-
-Do not estimate its impact.
+No explanation.
 
 ## Needs Human Review
 
-List only optimizations that could change business logic.
+Maximum 3 bullets.
 
-If none, output:
+Only optimizations that may change semantics.
+
+Examples:
+
+- Predicate pushdown
+- JOIN rewrite
+- Aggregation rewrite
+
+If there are none write:
 
 None.
 
 ==================================================
-STYLE RULES
+VALIDATION
 ==================================================
 
-- Maximum 100 words excluding SQL.
-- Be concise.
-- Avoid repetition.
-- Avoid long paragraphs.
-- Avoid educational content.
-- Avoid hypothetical scenarios.
-- Avoid assumptions.
-- Avoid numerical estimates.
-- Avoid markdown tables.
-- Do not repeat information already stated.
-- Return ONLY the requested markdown.
+Before responding verify:
+
+✓ No estimated numbers exist.
+
+✓ No percentages exist.
+
+✓ No dollar amounts exist.
+
+✓ No "Estimated" section exists.
+
+✓ No explanation longer than two sentences.
+
+If any of these conditions are violated, regenerate your answer.
+
+Return ONLY the markdown template.
 """
 
     if cache_name:
