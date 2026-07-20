@@ -1,12 +1,27 @@
 -- resources/sql/grid_readings_query.sql
--- Feeds src/beam/frequency_pipeline.py, which only ever reads
--- station_id, frequency_hz, and region from this result set.
--- voltage and timestamp are selected here but never consumed downstream.
-
+WITH station_stats AS (
+  SELECT
+    r.*,
+    m.station_name,
+    m.capacity_mw,
+    AVG(r.frequency_hz) OVER (
+      PARTITION BY r.station_id
+      ORDER BY r.timestamp
+      ROWS BETWEEN 11 PRECEDING AND CURRENT ROW
+    ) AS rolling_avg_freq,
+    LAG(r.frequency_hz) OVER (
+      PARTITION BY r.station_id ORDER BY r.timestamp
+    ) AS prev_freq
+  FROM `project-ff7c2ef5-8d88-401a-b86.grid_data.grid_readings` r
+  JOIN `project-ff7c2ef5-8d88-401a-b86.grid_data.station_metadata` m
+    ON r.station_id = m.station_id
+),
+flagged AS (
+  SELECT *,
+    CASE WHEN frequency_hz < 49.9 THEN 1 ELSE 0 END AS is_underfrequency
+  FROM station_stats
+)
 SELECT *
-FROM `project-ff7c2ef5-8d88-401a-b86.grid_data.grid_readings` r
-JOIN `project-ff7c2ef5-8d88-401a-b86.grid_data.station_metadata` m
-ON r.station_id = m.station_id
-WHERE r.region = 'west'
--- trivial change to create a second commit
--- clean final test
+FROM flagged
+WHERE region = 'west'
+ORDER BY timestamp DESC
