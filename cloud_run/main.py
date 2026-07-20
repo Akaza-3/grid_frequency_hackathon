@@ -98,13 +98,69 @@ def dry_run_bytes(sql_text: str) -> int:
 
 
 def build_schema_manifest() -> str:
+    # Hackathon-scoped: hardcoded. Real version pulls INFORMATION_SCHEMA.COLUMNS.
+    # Expanded with real detail (not padding) so it clears the Vertex AI
+    # context-caching minimum token floor (1024 tokens for this model).
     return """
-    Table: grid_data.grid_readings
-      station_id STRING, timestamp TIMESTAMP, frequency_hz FLOAT, voltage FLOAT, region STRING
-      (not partitioned, not clustered)
-    Table: grid_data.station_metadata
-      station_id STRING, station_name STRING, region STRING, capacity_mw FLOAT
-      (not partitioned, not clustered)
+    ==================================================
+    BANK-WIDE / DEMO DATA ARCHITECTURE BLUEPRINT
+    ==================================================
+
+    [TABLE: grid_data.grid_readings]
+    Columns:
+      - station_id STRING: unique identifier for the reporting station,
+        joins to station_metadata.station_id.
+      - timestamp TIMESTAMP: UTC timestamp of the reading, one row per
+        station per minute in production volumes.
+      - frequency_hz FLOAT: measured grid frequency in Hz. Nominal value
+        is 50.0Hz; readings below 49.9Hz indicate under-frequency load
+        shedding conditions and are the primary signal consumed by
+        downstream pipelines.
+      - voltage FLOAT: measured line voltage.
+      - region STRING: geographic region the station belongs to
+        (e.g. 'west', 'east').
+    Partitioning: NOT partitioned, NOT clustered in this demo dataset.
+    In a production deployment this table would typically be partitioned
+    by DATE(timestamp) and clustered by region, since most consumer
+    queries filter on both.
+
+    [TABLE: grid_data.station_metadata]
+    Columns:
+      - station_id STRING: unique identifier, primary join key.
+      - station_name STRING: human-readable station name.
+      - region STRING: geographic region.
+      - capacity_mw FLOAT: rated capacity in megawatts.
+    Partitioning: NOT partitioned, NOT clustered. Small dimension table,
+    full scans are cheap regardless of query shape.
+
+    [GOLDEN QUERY EXAMPLE 1 — column pruning]
+    Bad:
+      SELECT * FROM grid_readings r JOIN station_metadata m
+      ON r.station_id = m.station_id WHERE r.region = 'west'
+    Good (when only station_id, frequency_hz, region are consumed
+    downstream):
+      SELECT r.station_id, r.frequency_hz, r.region
+      FROM grid_readings r JOIN station_metadata m
+      ON r.station_id = m.station_id WHERE r.region = 'west'
+    Rationale: BigQuery is columnar — bytes scanned is driven by which
+    columns are referenced, not by row filtering or join order. Dropping
+    unused columns from the SELECT list is the only lever available on
+    an unpartitioned table like this one.
+
+    [GOLDEN QUERY EXAMPLE 2 — predicate placement]
+    On a partitioned table (not applicable to this demo dataset, but
+    relevant if this schema is extended later): filtering on the
+    partition column before a join enables partition pruning and can
+    reduce bytes scanned dramatically. On unpartitioned tables, moving
+    a WHERE clause earlier has no cost effect in BigQuery's columnar
+    model — only column selection does.
+
+    [REVIEW POLICY]
+    Any suggested rewrite must preserve exact join semantics and exact
+    filter conditions. Only column pruning is considered a safe,
+    automatic-suggestion-eligible optimization. Anything else (join
+    reordering, aggregation changes, subquery restructuring) should be
+    flagged for human review rather than auto-suggested.
     """
 
 
