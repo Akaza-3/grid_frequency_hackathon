@@ -254,7 +254,7 @@ def ask_gemini_for_rewrite(old_sql: str, new_sql: str, cache_name, schema_manife
     prompt = f"""
 You are a Senior Google BigQuery Performance Engineer performing an automated Pull Request review.
 
-Your goal is to optimize query performance while preserving business logic.
+Your objective is to improve BigQuery query performance while preserving the exact business logic.
 
 You are provided:
 
@@ -264,116 +264,168 @@ You are provided:
 4. Partitioning and clustering metadata
 5. Downstream Beam/Spark consumer code
 
-The downstream consumer code is the source of truth.
-Never remove any column that is referenced by downstream code.
+The downstream Beam/Spark consumer is the source of truth.
+Do NOT remove or modify any column, filter, or join that changes the downstream behaviour.
 
-===========================
+====================================================
 PREVIOUS QUERY
-===========================
+====================================================
 
 {old_sql}
 
-===========================
+====================================================
 NEW QUERY
-===========================
+====================================================
 
 {new_sql}
 
-===========================
-TASKS
-===========================
+====================================================
+TABLE SCHEMA
+====================================================
 
-Review the query and identify opportunities to improve BigQuery performance.
+{schema_manifest}
 
-You may:
+====================================================
+DOWNSTREAM CONSUMER
+====================================================
 
-- remove unused projected columns
-- push predicates when safe
-- simplify expressions
-- eliminate redundant computations
-- recommend partition pruning
-- recommend clustering
-- recommend materialized views
-- recommend join improvements
+{beam_context}
 
-Only rewrite SQL if business logic remains identical.
+====================================================
+REVIEW POLICY
+====================================================
 
-Do NOT estimate query cost.
-Do NOT estimate bytes scanned.
-Do NOT estimate dollar savings.
+Safe automatic optimizations:
 
-Those values are calculated separately by the application.
+- Remove unused projected columns.
+- Remove unused intermediate computations.
+- Remove unnecessary CTE projections.
+- Simplify expressions without changing semantics.
 
-Validate that every column required by downstream Beam/Spark code is still present.
+Do NOT automatically:
 
-===========================
-OUTPUT
-===========================
+- Change JOIN type.
+- Change JOIN condition.
+- Change filter conditions.
+- Push Beam filters into SQL.
+- Rewrite business logic.
+- Remove columns required by downstream code.
 
-Return ONLY valid JSON.
+If an optimization could change behaviour, DO NOT implement it.
+Instead, report it under **Needs Human Review**.
 
-Schema:
+====================================================
+TASK
+====================================================
 
-{
-  "business_logic_status": "PASS" | "FAIL",
+Review the SQL and generate an optimized version.
 
-  "business_logic_reason": "<one sentence>",
+Your optimized SQL must:
 
-  "optimized_sql": "<complete optimized SQL>",
+- Produce identical results.
+- Preserve downstream compatibility.
+- Compile successfully in BigQuery.
 
-  "summary": "<2-3 sentence overall summary>",
+You may additionally recommend:
 
-  "optimizations": [
-    {
-      "type": "Projection Pruning",
-      "status": "Implemented",
-      "description": "Removed unused columns from SELECT."
-    },
-    {
-      "type": "Predicate Pushdown",
-      "status": "Not Applicable",
-      "description": "Predicates already applied optimally."
-    },
-    {
-      "type": "Partition Pruning",
-      "status": "Recommendation",
-      "description": "Table is partitioned on event_date but query does not filter it."
-    },
-    {
-      "type": "Clustering",
-      "status": "Recommendation",
-      "description": "Cluster table by region."
-    },
-    {
-      "type": "Join Optimization",
-      "status": "None",
-      "description": "Current join strategy is appropriate."
-    },
-    {
-      "type": "Materialized View",
-      "status": "None",
-      "description": "Materialized view is unlikely to provide benefit."
-    }
-  ]
-}
+- Partitioning
+- Clustering
+- Materialized Views
+- Join improvements
 
-Rules:
+Only recommend them.
+Do NOT modify the SQL for these recommendations.
 
-Return ONLY JSON.
+====================================================
+IMPORTANT
+====================================================
 
-Do not wrap JSON in markdown.
+DO NOT:
 
-Do not include explanations outside JSON.
+- Estimate bytes scanned.
+- Estimate cost.
+- Estimate percentage savings.
+- Estimate dollar savings.
+- Explain BigQuery fundamentals.
+- Produce long educational paragraphs.
 
-Do not include ```json.
+Those metrics are calculated separately by the application.
 
-Do not estimate cost.
+Keep explanations concise.
 
-Do not estimate bytes.
+====================================================
+OUTPUT FORMAT
+====================================================
 
-Do not estimate savings.
+Return ONLY markdown.
 
-The optimized SQL must be executable in BigQuery.
+## Optimized SQL
+
+```sql
+<complete optimized SQL>
+```
+
+## Business Logic Validation
+
+PASS or FAIL
+
+One sentence explaining why.
+
+## Summary
+
+Maximum 3 sentences.
+
+## Implemented Optimizations
+
+Provide bullet points.
+
+Each bullet must contain:
+
+- Optimization name
+- One-line explanation
+
+Example:
+
+- Projection Pruning — Removed unused columns from intermediate SELECT statements.
+
+Limit to at most 5 bullets.
+
+## Recommendations
+
+Only recommendations that were NOT automatically applied.
+
+Each recommendation must be one bullet with one sentence.
+
+Examples:
+
+- Partition the table by DATE(timestamp).
+- Cluster the table by region.
+
+Maximum 5 bullets.
+
+## Needs Human Review
+
+List only optimizations that could change business logic.
+
+Each item must be one sentence.
+
+If there are none, write:
+
+None.
+
+====================================================
+STYLE
+====================================================
+
+Keep the entire response under 400 words.
+
+Be concise.
+
+Avoid repeating the same explanation.
+
+Avoid generic SQL education.
+
+Return ONLY the markdown above.
 """
 
     if cache_name:
