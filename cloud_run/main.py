@@ -425,28 +425,28 @@ OUTPUT
 
 Return ONLY valid JSON.
 
-{
-  "business_logic": {
+{{
+  "business_logic": {{
     "status": "PASS",
     "reason": "Business logic preserved."
-  },
+  }},
 
   "optimized_sql": "<complete optimized SQL>",
 
   "summary": "Maximum two sentences.",
 
   "changes": [
-    {
+    {{
       "change": "Removed unused projected column voltage",
       "reason": "Column is never referenced."
-    }
+    }}
   ],
 
   "recommendations": [
     "Partition table by DATE(timestamp)",
     "Cluster table by region)"
   ]
-}
+}}
 
 Rules:
 
