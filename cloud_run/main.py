@@ -19,6 +19,7 @@ handling, --allow-unauthenticated on the Cloud Run service for
 simplicity. Tighten both before using it on anything real.
 """
 import os
+import json
 import subprocess
 import tempfile
 import shutil
@@ -468,15 +469,26 @@ No explanations outside JSON.
         response = genai_client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
-            config={"cached_content": cache_name},
+            config={
+                "cached_content": cache_name,
+                "temperature": 0,
+            },
         )
     else:
         logger.info("Calling Gemini WITHOUT cache (inline context fallback)")
-        full_prompt = f"[SCHEMA]\n{schema_manifest}\n\n[DOWNSTREAM CODE]\n{beam_context}\n\n{prompt}"
+        full_prompt = (
+            f"[SCHEMA]\n{schema_manifest}\n\n"
+            f"[DOWNSTREAM CODE]\n{beam_context}\n\n"
+            f"{prompt}"
+        )
         response = genai_client.models.generate_content(
             model="gemini-2.5-flash",
             contents=full_prompt,
+            config={
+                "temperature": 0,
+            },
         )
+
     return response.text.strip()
 
 def extract_sql(response_text: str) -> str:
@@ -545,14 +557,86 @@ def review():
             beam_context,
         )
 
-        rewrite_bytes = dry_run_bytes(rewrite)
+        # -----------------------------
+        # Parse Gemini JSON
+        # -----------------------------
+        try:
+            rewrite = rewrite.strip()
+            if rewrite.startswith("```json"):
+                rewrite = rewrite[7:]
 
-        section = f"### `{change['path']}`\n"
+            if rewrite.startswith("```"):
+                rewrite = rewrite[3:]
+
+            if rewrite.endswith("```"):
+                rewrite = rewrite[:-3]
+
+            rewrite = rewrite.strip()
+            rewrite_json = json.loads(rewrite)
+        except json.JSONDecodeError as e:
+            logger.error(f"Gemini returned invalid JSON:\n{rewrite}")
+            raise e
+
+        optimized_sql = rewrite_json["optimized_sql"]
+        summary = rewrite_json.get("summary", "")
+        changes = rewrite_json.get("changes", [])
+        recommendations = rewrite_json.get("recommendations", [])
+        business_logic = rewrite_json.get("business_logic", {})
+
+        # -----------------------------
+        # Dry run ONLY the optimized SQL
+        # -----------------------------
+        rewrite_bytes = dry_run_bytes(optimized_sql)
+
+        # -----------------------------
+        # Build GitHub comment
+        # -----------------------------
+        section = f"## `{change['path']}`\n\n"
+
         if old_bytes is not None:
-            section += f"- Previous version: {old_bytes:,} bytes scanned\n"
-        section += f"- This PR's version: {new_bytes:,} bytes scanned\n"
-        section += f"- Gemini-suggested rewrite: {rewrite_bytes:,} bytes scanned\n\n"
-        section += f"<details><summary>Suggested rewrite</summary>\n\n```sql\n{rewrite}\n```\n</details>"
+            section += f"**Previous:** {old_bytes:,} bytes scanned\n\n"
+
+        section += f"**Current:** {new_bytes:,} bytes scanned\n\n"
+        section += f"**Gemini Rewrite:** {rewrite_bytes:,} bytes scanned\n\n"
+
+        section += "### Business Logic\n"
+
+        section += (
+            f"- Status: **{business_logic.get('status', 'UNKNOWN')}**\n"
+            f"- Reason: {business_logic.get('reason', '')}\n\n"
+        )
+
+        section += "### Summary\n"
+        section += summary + "\n\n"
+
+        if changes:
+            section += "### Changes Applied\n"
+
+            for item in changes:
+                section += (
+                    f"- **{item['change']}**\n"
+                    f"  - {item['reason']}\n"
+                )
+
+            section += "\n"
+
+        if recommendations:
+            section += "### Recommendations\n"
+
+            for rec in recommendations:
+                section += f"- {rec}\n"
+
+            section += "\n"
+
+        section += (
+            "<details>\n"
+            "<summary><b>Optimized SQL</b></summary>\n\n"
+            "```sql\n"
+            f"{optimized_sql}\n"
+            "```\n"
+            "</details>\n"
+        )
+
         comment_sections.append(section)
 
     comment_body = "## SQL Cost Review\n\n" + "\n\n---\n\n".join(comment_sections)
