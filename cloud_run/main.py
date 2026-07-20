@@ -265,203 +265,316 @@ def get_or_create_cache(schema_manifest: str, beam_context: str):
 
 def ask_gemini_for_rewrite(old_sql: str, new_sql: str, cache_name, schema_manifest, beam_context) -> str:
     prompt = f"""
-You are a Senior Google BigQuery SQL Optimization Engineer.
+You are a Senior Google BigQuery Performance Engineer responsible for reviewing production SQL used in enterprise data pipelines.
 
-Your task is to optimize the SQL query while preserving EXACT SQL semantics.
+Your primary goal is to optimize BigQuery SQL while preserving business logic exactly.
 
-==================================================
-INPUT
-==================================================
+You are also provided with:
 
-PREVIOUS SQL
+1. BigQuery table schemas.
+2. Downstream Apache Beam pipeline code that consumes this SQL.
+3. The original SQL query.
+4. Bytes scanned by the original query (obtained using BigQuery Dry Run).
 
-{old_sql}
+Your task is to generate an optimized SQL query that is fully compatible with the downstream pipeline and minimizes BigQuery execution cost.
 
-CURRENT SQL
+==========================================================
+IMPORTANT
+==========================================================
 
-{new_sql}
+The optimized query MUST produce identical business results.
 
-==================================================
-OBJECTIVE
-==================================================
+Do NOT change:
 
-Reduce BigQuery query cost by minimizing bytes scanned while preserving the exact behaviour of the current query.
+- business logic
+- joins
+- filtering semantics
+- aggregation semantics
+- ordering semantics
+- timestamp semantics
+- null handling
+- window function behaviour
+- duplicate handling
+- numeric precision
 
-The optimized query MUST return the same results as the original query.
+If any optimization changes the business logic, reject the optimization.
 
-The downstream consumer is provided only to identify unused columns. It MUST NOT be used to remove SQL operations that affect query semantics.
+==========================================================
+OPTIMIZATION CHECKLIST
+==========================================================
 
-==================================================
-BUSINESS LOGIC MUST BE PRESERVED
-==================================================
+Review the SQL from the following perspectives.
 
-The optimized query MUST preserve ALL of the following:
+1. Column Usage
+----------------
 
-• Same returned rows
-• Same returned values
-• Same returned ordering
-• Same JOIN behaviour
-• Same filtering behaviour
-• Same aggregation behaviour
-• Same NULL handling
-• Same duplicate behaviour
-• Same window function semantics
-• Same LIMIT behaviour
-• Same DISTINCT behaviour
+Identify projected columns that are never consumed.
 
-If preserving any of the above is uncertain, DO NOT modify it.
+Before removing any column verify that:
 
-==================================================
-SAFE AUTOMATIC OPTIMIZATIONS
-==================================================
+- it is not referenced anywhere in SQL
+- it is not consumed by the downstream Beam pipeline
+- it is not required by future transformations
 
-You MAY automatically:
+Only remove columns that are completely unused.
 
-1. Remove unused projected columns.
+==========================================================
 
-2. Remove unused computed columns.
+2. Predicate Optimization
+-------------------------
 
-3. Remove expressions whose outputs are never referenced.
+Determine whether filters can be pushed closer to source tables.
 
-4. Simplify SELECT lists.
+Look for:
 
-5. Remove redundant CTEs ONLY IF removing them does not change any SQL semantics.
+- predicate pushdown
+- partition pruning
+- unnecessary filters
+- redundant predicates
+- constant expressions
 
-6. Remove dead SQL that provably has no effect on the final result.
+==========================================================
 
-==================================================
-DO NOT AUTOMATICALLY CHANGE
-==================================================
+3. Join Optimization
+--------------------
 
-Never automatically:
+Review every JOIN.
 
-• Remove JOINs
-• Add JOINs
-• Change JOIN type
-• Change JOIN condition
-• Reorder JOINs
-• Remove ORDER BY
-• Change ORDER BY
-• Remove WHERE clauses
-• Add WHERE clauses
-• Push predicates
-• Change GROUP BY
-• Change HAVING
-• Change DISTINCT
-• Change LIMIT
-• Rewrite window functions
-• Change partitioning logic
-• Change clustering logic
+Determine:
 
-These may only be suggested as recommendations.
+- whether every join is necessary
+- whether duplicate joins exist
+- whether joins can be simplified
+- whether join order can reduce scanned data
+- whether clustering recommendations can improve joins
 
-==================================================
-ASSUMPTIONS ARE FORBIDDEN
-==================================================
+Never remove a join unless business logic is unchanged.
 
-Never assume:
+==========================================================
 
-• Primary keys
-• Foreign keys
-• Referential integrity
-• Unique constraints
-• Functional dependencies
-• Data distributions
-• Table sizes
-• Nullability
-• Optimizer behaviour
+4. Projection Optimization
+--------------------------
 
-If an optimization depends on any assumption, DO NOT apply it.
+Prefer explicit projection instead of SELECT *.
 
-Instead mention it under "Recommendations".
+Remove:
 
-==================================================
-DOWNSTREAM CONSUMER
-==================================================
+- unused expressions
+- unused aliases
+- unused calculated fields
+- unused CASE expressions
+- unused window function outputs
 
-The downstream consumer may be used ONLY to identify columns that are never referenced.
+==========================================================
 
-The downstream consumer MUST NOT be used to:
+5. Window Functions
+-------------------
 
-• Remove joins
-• Remove ordering
-• Remove filters
-• Remove aggregations
-• Remove window functions that affect results
+Review every window function.
 
-==================================================
-PERFORMANCE RECOMMENDATIONS
-==================================================
+Determine:
 
-Recommendations may include:
+- is its output consumed?
+- can it be removed?
+- can it be simplified?
 
-• Projection pruning
-• Predicate pushdown
-• Join elimination
-• Partitioning
-• Clustering
-• Materialized views
+Never modify the partitioning or ordering semantics.
 
-Recommendations MUST NOT be automatically applied unless they are provably semantics-preserving.
+==========================================================
 
-==================================================
-STRICTLY FORBIDDEN
-==================================================
+6. CTE Review
+-------------
 
-Do NOT output:
+Review every CTE.
 
-• Estimated bytes scanned
-• Estimated savings
-• Estimated costs
-• Estimated percentages
-• Approximate values
-• Assumptions
-• Educational explanations
-• SQL tutorials
-• BigQuery internals
+Determine:
 
-==================================================
-OUTPUT
-==================================================
+- pass-through CTEs
+- dead CTEs
+- mergeable CTEs
+- redundant nesting
+
+Preserve readability.
+
+==========================================================
+
+7. Aggregation Review
+---------------------
+
+Review:
+
+- GROUP BY
+- DISTINCT
+- QUALIFY
+- HAVING
+
+Remove redundant operations only when semantics remain identical.
+
+==========================================================
+
+8. Partition Recommendations
+----------------------------
+
+Suggest whether tables should be partitioned.
+
+Explain:
+
+- recommended partition column
+- expected benefit
+
+==========================================================
+
+9. Clustering Recommendations
+-----------------------------
+
+Suggest clustering based on:
+
+- filter columns
+- join columns
+- grouping columns
+- ordering columns
+
+Explain why.
+
+==========================================================
+
+10. BigQuery Cost Optimization
+------------------------------
+
+Look for opportunities to reduce:
+
+- bytes scanned
+- intermediate shuffle
+- execution stages
+- slot usage
+- data transferred
+
+==========================================================
+
+11. Downstream Validation
+-------------------------
+
+The Beam pipeline consumes the SQL output.
+
+Verify:
+
+- required columns still exist
+- column names are unchanged
+- column types remain compatible
+- ordering assumptions remain valid
+
+==========================================================
+
+12. Business Logic Validation
+-----------------------------
+
+Before returning the optimized SQL verify:
+
+✓ joins unchanged
+
+✓ filters unchanged
+
+✓ aggregations unchanged
+
+✓ ordering unchanged
+
+✓ timestamp semantics unchanged
+
+✓ window functions unchanged
+
+✓ duplicate handling unchanged
+
+✓ NULL semantics unchanged
+
+✓ numeric precision unchanged
+
+==========================================================
+OUTPUT FORMAT
+==========================================================
 
 Return ONLY valid JSON.
 
 {{
   "business_logic": {{
-    "status": "PASS",
-    "reason": "Business logic preserved."
+    "status": "PASS | FAIL",
+    "reason": "Explain why."
   }},
 
-  "optimized_sql": "<complete optimized SQL>",
+  "optimized_sql": "<optimized SQL>",
 
-  "summary": "Maximum two sentences.",
+  "summary": "<2-3 sentence summary of the optimization>",
 
   "changes": [
     {{
-      "change": "Removed unused projected column voltage",
-      "reason": "Column is never referenced."
+      "change": "...",
+      "reason": "..."
     }}
   ],
 
   "recommendations": [
-    "Partition table by DATE(timestamp)",
-    "Cluster table by region)"
+    "Recommendation 1",
+    "Recommendation 2"
   ]
 }}
 
-Rules:
+Do not include markdown.
 
-Return valid JSON only.
+Do not include explanations outside JSON.
 
-No markdown.
+==========================================================
+POST-OPTIMIZATION SELF REVIEW
+==========================================================
 
-No code fences.
+Before generating the final answer, ask yourself:
 
-No additional keys.
+1. Did I accidentally change business logic?
 
-No comments.
+2. Did I remove any required column?
 
-No explanations outside JSON.
+3. Did I change join cardinality?
+
+4. Did I modify window function semantics?
+
+5. Did I alter filtering behaviour?
+
+6. Did I introduce duplicate rows?
+
+7. Did I preserve downstream compatibility?
+
+8. Can this SQL replace the original SQL without requiring any Beam code changes?
+
+If the answer to ANY question is NO, do not optimize that section.
+
+==========================================================
+COST ESTIMATION
+==========================================================
+
+You will be provided with:
+
+- Original bytes scanned
+- Optimized bytes scanned (calculated using BigQuery Dry Run)
+
+Using ONLY these measured values:
+
+1. Calculate the percentage reduction in bytes scanned.
+
+2. Calculate the absolute reduction in bytes scanned.
+
+3. Estimate the percentage reduction in BigQuery query cost based on bytes scanned.
+
+Assume BigQuery on-demand pricing where query cost is proportional to bytes processed.
+
+Do NOT invent execution costs or dollar values unless sufficient information is provided.
+
+Include the following object in the JSON response:
+
+"cost_analysis": {
+    "original_bytes": "...",
+    "optimized_bytes": "...",
+    "bytes_saved": "...",
+    "percent_reduction": "...",
+    "estimated_cost_reduction": "..."
+}
 """
 
     if cache_name:
