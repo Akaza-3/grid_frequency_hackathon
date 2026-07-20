@@ -164,17 +164,37 @@ def build_schema_manifest() -> str:
     """
 
 
+CACHE_DISPLAY_NAME = "grid_schema_beam_cache"
+
+
+def find_existing_cache():
+    """Look for a live, non-expired cache with our display name."""
+    try:
+        for cache in genai_client.caches.list():
+            if cache.display_name == CACHE_DISPLAY_NAME:
+                logger.info(f"Found existing cache: {cache.name} (expires {cache.expire_time})")
+                return cache.name
+    except Exception as e:
+        logger.warning(f"Cache lookup failed ({e}), will attempt to create a new one")
+    return None
+
+
 def get_or_create_cache(schema_manifest: str, beam_context: str):
+    existing = find_existing_cache()
+    if existing:
+        logger.info(f"Reusing existing cache: {existing}")
+        return existing
+
     combined = schema_manifest + "\n\n[DOWNSTREAM CONSUMER CODE]\n" + beam_context
     approx_tokens = len(combined) // 4
-    logger.info(f"Attempting context cache creation, manifest ~{approx_tokens} tokens (~{len(combined)} chars)")
+    logger.info(f"No existing cache found. Creating new one, manifest ~{approx_tokens} tokens (~{len(combined)} chars)")
     try:
         cache = genai_client.caches.create(
             model="gemini-2.5-flash",
             config={
                 "contents": [combined],
                 "ttl": "86400s",
-                "display_name": "grid_schema_beam_cache",
+                "display_name": CACHE_DISPLAY_NAME,
             },
         )
         logger.info(f"Context cache created successfully: {cache.name}")
