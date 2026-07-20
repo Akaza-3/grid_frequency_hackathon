@@ -264,317 +264,43 @@ def get_or_create_cache(schema_manifest: str, beam_context: str):
 
 
 def ask_gemini_for_rewrite(old_sql: str, new_sql: str, cache_name, schema_manifest, beam_context, original_bytes: int) -> str:
-    prompt = f"""
-You are a Senior Google BigQuery Performance Engineer responsible for reviewing production SQL used in enterprise data pipelines.
+    prompt = f"""You are an expert Google BigQuery SQL optimizer.
 
-Your objective is to optimize the supplied SQL while preserving business logic exactly.
+**Strict Rules (never break these):**
+- Preserve EXACT business logic, output rows, column names/types, ordering, joins, filters, window functions, and NULL/timestamp semantics.
+- The downstream Beam pipeline (shown below) is the ground truth for required columns. Do NOT remove any column it uses.
+- Keep the exact same JOIN structure (same tables, same join type, same ON conditions).
+- Prefer explicit column lists over SELECT * when safe.
+- Only remove truly unused columns/expressions.
 
-You are provided with:
-
-1. BigQuery table schemas
-2. Downstream Apache Beam pipeline code
-3. Original SQL query
-4. Original query bytes scanned (BigQuery Dry Run)
-
-========================================================
-BIGQUERY SCHEMA
-========================================================
-
+**Input:**
 {schema_manifest}
 
-========================================================
-DOWNSTREAM BEAM PIPELINE
-========================================================
-
+**Downstream Beam Consumer:**
 {beam_context}
 
-========================================================
-ORIGINAL SQL
-========================================================
-
+**Current SQL to optimize:**
 {new_sql}
 
-========================================================
-ORIGINAL BYTES SCANNED
-========================================================
+**Task:**
+Rewrite the SQL to be more efficient (mainly by pruning unused columns/projections) while being **100% semantically identical**.
 
-{original_bytes}
-
-========================================================
-PRIMARY OBJECTIVE
-========================================================
-
-Reduce BigQuery cost while producing identical business results.
-
-Preserve:
-
-- business logic
-- joins
-- filtering behaviour
-- aggregations
-- ordering
-- window functions
-- duplicate handling
-- NULL semantics
-- timestamp semantics
-- numeric precision
-
-Never make an optimization that changes the output consumed by downstream Beam code.
-
-========================================================
-HARD CONSTRAINT — JOIN PRESERVATION
-========================================================
-
-The optimized SQL MUST contain the exact same JOIN clauses as the
-original query — same tables joined, same join type (INNER/LEFT/etc),
-same ON condition, same number of joins.
-
-Do NOT:
-- remove a join, even if you believe the joined columns are unused
-- replace a join with a subquery, EXISTS clause, or IN clause
-- replace a join with a window function or aggregation that
-  approximates the same result
-- merge two joins into one, even if you believe it's equivalent
-
-If you believe a join is unnecessary, do NOT act on that belief.
-Instead, note it in "recommendations" as a suggestion for human
-review. This is a hard rule with no exceptions, including cases
-where removing the join would reduce bytes scanned.
-
-========================================================
-OPTIMIZATION CHECKLIST
-========================================================
-
-Review the SQL carefully.
-
-Column Usage
-------------
-Determine:
-
-- projected columns never consumed
-- unused aliases
-- unused computed columns
-- unused CASE expressions
-- unused window outputs
-
-Only remove columns if they are unused by BOTH SQL and downstream Beam code.
-
---------------------------------------------------------
-
-Predicate Optimization
-----------------------
-
-Look for:
-
-- predicate pushdown
-- partition pruning
-- redundant predicates
-- constant expressions
-- unnecessary filters
-
---------------------------------------------------------
-
-Join Optimization
------------------
-
-never remove JOIN.
-
-Determine:
-
-- unnecessary joins
-- duplicate joins
-- inefficient join ordering
-- opportunities for broadcast joins
-- clustering opportunities
-
-Never remove joins if business logic changes.
-
---------------------------------------------------------
-
-Projection Optimization
------------------------
-
-Prefer explicit projection instead of SELECT *.
-
-Remove:
-
-- unused expressions
-- unused aliases
-- unused calculated columns
-
---------------------------------------------------------
-
-Window Functions
-----------------
-
-Review every window function.
-
-Determine:
-
-- whether output is consumed
-- whether computation is necessary
-
-Never alter partitioning or ordering semantics.
-
---------------------------------------------------------
-
-CTE Review
-----------
-
-Identify:
-
-- dead CTEs
-- pass-through CTEs
-- mergeable CTEs
-- redundant nesting
-
---------------------------------------------------------
-
-Aggregation Review
-------------------
-
-Review:
-
-- DISTINCT
-- GROUP BY
-- HAVING
-- QUALIFY
-
-Only simplify when semantics remain identical.
-
---------------------------------------------------------
-
-Partition Recommendations
--------------------------
-
-Recommend whether the table should be partitioned.
-
-Explain why.
-
---------------------------------------------------------
-
-Clustering Recommendations
---------------------------
-
-Recommend clustering columns.
-
-Explain expected benefit.
-
---------------------------------------------------------
-
-Performance Review
-------------------
-
-Identify opportunities to reduce:
-
-- bytes scanned
-- shuffle
-- execution stages
-- intermediate data
-- slot usage
-
---------------------------------------------------------
-
-Business Logic Validation
--------------------------
-
-Verify:
-
-- joins preserved
-- filters preserved
-- aggregations preserved
-- ordering preserved
-- timestamps preserved
-- NULL handling preserved
-- duplicate handling preserved
-- numeric precision preserved
-
---------------------------------------------------------
-
-Downstream Compatibility
-------------------------
-
-Verify:
-
-- required columns remain
-- names unchanged
-- types compatible
-- Beam pipeline will continue to work
-
-========================================================
-SELF REVIEW
-========================================================
-
-Before generating your answer verify:
-
-✓ Business logic preserved
-
-✓ No required columns removed
-
-✓ Join cardinality unchanged
-
-✓ Window functions preserved
-
-✓ Aggregations preserved
-
-✓ Downstream Beam compatibility maintained
-
-If any answer is NO, reject the optimization.
-
-========================================================
-COST ANALYSIS
-========================================================
-
-The original bytes scanned are already provided.
-
-DO NOT invent values for optimized bytes.
-
-Estimate ONLY the percentage cost reduction that is likely based on your optimization strategy.
-
-The application will later calculate the actual optimized bytes using a BigQuery Dry Run.
-
-========================================================
-OUTPUT FORMAT
-========================================================
-
-Return ONLY valid JSON.
+Return **ONLY** valid JSON (no markdown, no extra text):
 
 {{
   "business_logic": {{
-    "status": "PASS or FAIL",
-    "reason": "Explain your reasoning."
+    "status": "PASS",
+    "reason": "Brief explanation"
   }},
-
-  "optimized_sql": "Complete optimized SQL",
-
-  "summary": "Short summary of the optimization.",
-
+  "optimized_sql": "the complete rewritten SQL query here",
+  "summary": "One sentence summary of changes",
   "changes": [
-    {{
-      "change": "...",
-      "reason": "..."
-    }}
+    {{"change": "Removed unused column X", "reason": "Not used by Beam pipeline"}}
   ],
-
-  "recommendations": [
-    "Recommendation 1",
-    "Recommendation 2"
-  ],
-
-  "estimated_cost_analysis": {{
-    "original_bytes": "{original_bytes}",
-    "expected_cost_reduction": "Estimated percentage reduction only",
-    "reason": "Explain why the optimization is expected to reduce cost."
-  }}
+  "recommendations": ["List of further suggestions for human review"]
 }}
 
-Return ONLY JSON.
-
-Do not include markdown.
-
-Do not wrap the SQL in triple backticks.
-
-Do not include any explanation outside the JSON object.
+Do not estimate bytes/cost. The app will dry-run it.
 """
 
     if cache_name:
@@ -674,22 +400,28 @@ def review():
         # -----------------------------
         # Parse Gemini JSON
         # -----------------------------
+        rewrite = rewrite.strip()
+        # Remove common wrappers
+        if rewrite.startswith("```json"):
+            rewrite = rewrite[7:]
+        if rewrite.startswith("```"):
+            rewrite = rewrite[3:]
+        if rewrite.endswith("```"):
+            rewrite = rewrite[:-3]
+        rewrite = rewrite.strip()
+        
         try:
-            rewrite = rewrite.strip()
-            if rewrite.startswith("```json"):
-                rewrite = rewrite[7:]
-
-            if rewrite.startswith("```"):
-                rewrite = rewrite[3:]
-
-            if rewrite.endswith("```"):
-                rewrite = rewrite[:-3]
-
-            rewrite = rewrite.strip()
             rewrite_json = json.loads(rewrite)
         except json.JSONDecodeError as e:
-            logger.error(f"Gemini returned invalid JSON:\n{rewrite}")
-            raise e
+            logger.error(f"JSON parse failed:\n{rewrite}")
+            # Fallback: use original SQL
+            rewrite_json = {
+                "optimized_sql": new_sql,
+                "business_logic": {"status": "FAIL", "reason": "Gemini JSON parse failed"},
+                "summary": "Fallback to original",
+                "changes": [],
+                "recommendations": []
+            }
 
         optimized_sql = rewrite_json["optimized_sql"]
         summary = rewrite_json.get("summary", "")

@@ -16,7 +16,7 @@ WITH station_stats AS (
   FROM `project-ff7c2ef5-8d88-401a-b86.grid_data.grid_readings` r
   JOIN `project-ff7c2ef5-8d88-401a-b86.grid_data.station_metadata` m
     ON r.station_id = m.station_id
-),
+), 
 flagged AS (
   SELECT *,
     CASE WHEN frequency_hz < 49.9 THEN 1 ELSE 0 END AS is_underfrequency
