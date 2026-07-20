@@ -252,180 +252,156 @@ def get_or_create_cache(schema_manifest: str, beam_context: str):
 
 def ask_gemini_for_rewrite(old_sql: str, new_sql: str, cache_name, schema_manifest, beam_context) -> str:
     prompt = f"""
-You are a Senior Google BigQuery Performance Engineer performing an automated Pull Request review.
+You are an automated SQL code reviewer for BigQuery.
 
-Your objective is to improve BigQuery query performance while preserving the exact business logic.
+Your ONLY responsibilities are:
 
-You are provided:
+1. Verify business logic is preserved.
+2. Generate an optimized SQL query.
+3. Explain WHAT changed.
+4. Explain WHY the change is safe.
+5. Suggest additional optimizations that require human review.
 
-1. Previous SQL
-2. New SQL submitted in this PR
-3. Table schema from INFORMATION_SCHEMA
-4. Partitioning and clustering metadata
-5. Downstream Beam/Spark consumer code
+The application already computes:
 
-The downstream Beam/Spark consumer is the source of truth.
-Do NOT remove or modify any column, filter, or join that changes the downstream behaviour.
+- Previous bytes scanned
+- Current bytes scanned
+- Optimized bytes scanned
+- Bytes saved
+- Percentage reduction
+- Query cost
 
-====================================================
-PREVIOUS QUERY
-====================================================
+DO NOT mention any of the above.
+DO NOT estimate bytes scanned.
+DO NOT estimate percentage savings.
+DO NOT estimate cost.
+DO NOT estimate row counts.
+DO NOT invent numbers.
+
+Never include phrases like:
+
+- "Estimated bytes scanned"
+- "Estimated savings"
+- "Approximate cost"
+- "Assume..."
+- "For example..."
+- "If the table has..."
+- "Production dataset..."
+- "Typical savings..."
+
+If exact values are unavailable, say nothing.
+
+==================================================
+INPUTS
+==================================================
+
+Previous SQL
 
 {old_sql}
 
-====================================================
-NEW QUERY
-====================================================
+Current SQL
 
 {new_sql}
 
-====================================================
-TABLE SCHEMA
-====================================================
+Schema
 
 {schema_manifest}
 
-====================================================
-DOWNSTREAM CONSUMER
-====================================================
+Downstream consumer
 
 {beam_context}
 
-====================================================
-REVIEW POLICY
-====================================================
+==================================================
+SAFE AUTOMATIC CHANGES
+==================================================
 
-Safe automatic optimizations:
+Allowed:
 
-- Remove unused projected columns.
-- Remove unused intermediate computations.
-- Remove unnecessary CTE projections.
-- Simplify expressions without changing semantics.
+- Projection pruning
+- Removing unused columns
+- Removing unused SELECT expressions
+- Removing unnecessary CTE projections
 
-Do NOT automatically:
+Not Allowed:
 
-- Change JOIN type.
-- Change JOIN condition.
-- Change filter conditions.
-- Push Beam filters into SQL.
-- Rewrite business logic.
-- Remove columns required by downstream code.
+- Changing JOIN type
+- Changing JOIN condition
+- Changing filters
+- Changing GROUP BY
+- Changing window logic
+- Changing business logic
+- Removing columns used by downstream Beam/Spark
 
-If an optimization could change behaviour, DO NOT implement it.
-Instead, report it under **Needs Human Review**.
+Anything outside the safe list must be reported under "Needs Human Review".
 
-====================================================
-TASK
-====================================================
-
-Review the SQL and generate an optimized version.
-
-Your optimized SQL must:
-
-- Produce identical results.
-- Preserve downstream compatibility.
-- Compile successfully in BigQuery.
-
-You may additionally recommend:
-
-- Partitioning
-- Clustering
-- Materialized Views
-- Join improvements
-
-Only recommend them.
-Do NOT modify the SQL for these recommendations.
-
-====================================================
-IMPORTANT
-====================================================
-
-DO NOT:
-
-- Estimate bytes scanned.
-- Estimate cost.
-- Estimate percentage savings.
-- Estimate dollar savings.
-- Explain BigQuery fundamentals.
-- Produce long educational paragraphs.
-
-Those metrics are calculated separately by the application.
-
-Keep explanations concise.
-
-====================================================
-OUTPUT FORMAT
-====================================================
+==================================================
+OUTPUT
+==================================================
 
 Return ONLY markdown.
 
 ## Optimized SQL
 
 ```sql
-<complete optimized SQL>
+...
 ```
 
-## Business Logic Validation
+## Business Logic
 
 PASS or FAIL
 
-One sentence explaining why.
+One sentence only.
 
-## Summary
-
-Maximum 3 sentences.
-
-## Implemented Optimizations
-
-Provide bullet points.
-
-Each bullet must contain:
-
-- Optimization name
-- One-line explanation
-
-Example:
-
-- Projection Pruning — Removed unused columns from intermediate SELECT statements.
-
-Limit to at most 5 bullets.
-
-## Recommendations
-
-Only recommendations that were NOT automatically applied.
-
-Each recommendation must be one bullet with one sentence.
-
-Examples:
-
-- Partition the table by DATE(timestamp).
-- Cluster the table by region.
+## Changes Made
 
 Maximum 5 bullets.
 
-## Needs Human Review
+Each bullet:
 
-List only optimizations that could change business logic.
+- What changed
+- Why it is safe
 
-Each item must be one sentence.
+Example:
 
-If there are none, write:
+- Removed `voltage` from the projection because it is never referenced by downstream code.
 
-None.
+## Human Review Recommendations
 
-====================================================
-STYLE
-====================================================
+Maximum 3 bullets.
 
-Keep the entire response under 400 words.
+Only recommendations.
 
-Be concise.
+No implementation.
 
-Avoid repeating the same explanation.
+Examples:
 
-Avoid generic SQL education.
+- Consider partitioning by DATE(timestamp).
+- Consider clustering by region.
+- Predicate pushdown should be reviewed because it changes filtering semantics.
 
-Return ONLY the markdown above.
+==================================================
+RULES
+==================================================
+
+Maximum 250 words.
+
+No educational explanations.
+
+No BigQuery tutorials.
+
+No estimated numbers.
+
+No percentages.
+
+No cost calculations.
+
+No assumptions.
+
+No markdown tables.
+
+No repeated explanations.
+
+Return ONLY the requested sections.
 """
 
     if cache_name:
