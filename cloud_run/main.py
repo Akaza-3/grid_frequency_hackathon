@@ -252,158 +252,29 @@ def get_or_create_cache(schema_manifest: str, beam_context: str):
 
 def ask_gemini_for_rewrite(old_sql: str, new_sql: str, cache_name, schema_manifest, beam_context) -> str:
     prompt = f"""
-You are a Senior Google BigQuery SQL Optimization Engine.
-
-Your task is to optimize SQL while preserving identical business logic.
-
-You are NOT responsible for calculating performance metrics.
-
-The application already computes:
-
-- Previous bytes scanned
-- Current bytes scanned
-- Optimized bytes scanned
-- Bytes saved
-- Percentage reduction
-- Query cost
-
-Never calculate or estimate any of the above.
-
-==================================================
-INPUT
-==================================================
-
-Previous SQL
-
-{old_sql}
-
-Current SQL
-
-{new_sql}
-
-Schema Metadata
-
-{schema_manifest}
-
-Downstream Beam/Spark Consumer
-
-{beam_context}
-
-==================================================
-RULES
-==================================================
-
-Business logic must remain identical.
-
-The downstream consumer is the source of truth.
-
-Safe automatic optimizations:
-
-- Projection pruning
-- Removing unused projected columns
-- Removing unused computed columns
-- Removing dead SQL
-- Removing unnecessary CTEs
-- Simplifying projections
-
-Do NOT automatically:
-
-- Change JOIN type
-- Change JOIN order
-- Change JOIN condition
-- Change WHERE conditions
-- Change GROUP BY
-- Change DISTINCT
-- Change ORDER BY
-- Change window function semantics
-- Change aggregation semantics
-- Change LIMIT
-
-If another optimization exists, report it under "human_review".
-
-==================================================
-STRICTLY FORBIDDEN
-==================================================
-
-Never output:
-
-Estimated bytes scanned
-
-Estimated savings
-
-Estimated cost
-
-Estimated reduction
-
-Estimated percentage
-
-Approximate values
-
-Dollar calculations
-
-Row count assumptions
-
-Storage assumptions
-
-Hypothetical production examples
-
-BigQuery tutorials
-
-Performance explanations
-
-Long paragraphs
-
-==================================================
-OUTPUT
-==================================================
-
 Return ONLY valid JSON.
 
 {
-  "business_logic": {
-    "status": "PASS",
-    "reason": "Business logic preserved because all downstream-required columns and query semantics remain unchanged."
-  },
-
-  "optimized_sql": "<complete optimized SQL>",
-
-  "summary": "Maximum two sentences summarizing the optimization.",
-
-  "changes": [
-    {
-      "change": "Removed unused column voltage",
-      "reason": "Not referenced by downstream consumer."
-    },
-    {
-      "change": "Removed unused column station_name",
-      "reason": "Not referenced after JOIN."
-    }
+  "optimized_sql":"...",
+  "changes":[
+      {
+          "type":"Projection Pruning",
+          "description":"Removed unused column voltage."
+      },
+      {
+          "type":"Dead Code",
+          "description":"Removed unused window function rolling_avg_freq."
+      }
   ],
-
-  "human_review": [
-    "Predicate pushdown",
-    "Partitioning",
-    "Clustering"
+  "recommendations":[
+      "Partition table by DATE(timestamp)",
+      "Cluster table by region"
+  ],
+  "human_review":[
+      "Predicate pushdown",
+      "Join rewrite"
   ]
 }
-
-Rules:
-
-Return valid JSON only.
-
-No markdown.
-
-No explanations outside JSON.
-
-No additional keys.
-
-No estimated metrics.
-
-No educational text.
-
-No comments.
-
-No code fences.
 """
 
     if cache_name:
