@@ -70,8 +70,6 @@ def clone_and_diff(repo_clone_url: str, before_sha: str, after_sha: str):
         new_content = run_git("show", f"{after_sha}:{path}", cwd=tmp_dir)
         results.append({"path": path, "old": old_content, "new": new_content})
 
-    # Grab all Beam/Spark consumer code as-is at after_sha for context —
-    # not diffed, just included so Gemini can see what's actually consumed.
     beam_context = ""
     beam_full_path = os.path.join(tmp_dir, BEAM_DIR)
     if os.path.isdir(beam_full_path):
@@ -100,7 +98,6 @@ def dry_run_bytes(sql_text: str) -> int:
 
 
 def build_schema_manifest() -> str:
-    # Hackathon-scoped: hardcoded. Real version pulls INFORMATION_SCHEMA.COLUMNS.
     return """
     Table: grid_data.grid_readings
       station_id STRING, timestamp TIMESTAMP, frequency_hz FLOAT, voltage FLOAT, region STRING
@@ -113,10 +110,8 @@ def build_schema_manifest() -> str:
 
 def get_or_create_cache(schema_manifest: str, beam_context: str):
     combined = schema_manifest + "\n\n[DOWNSTREAM CONSUMER CODE]\n" + beam_context
-    approx_tokens = len(combined) // 4  # rough chars-to-tokens estimate
+    approx_tokens = len(combined) // 4
     logger.info(f"Attempting context cache creation, manifest ~{approx_tokens} tokens (~{len(combined)} chars)")
-    # Vertex AI context caching has a minimum token floor; small hackathon
-    # manifests may fail to cache. Fall back to sending it inline if so.
     try:
         cache = genai_client.caches.create(
             model="gemini-2.5-flash",
