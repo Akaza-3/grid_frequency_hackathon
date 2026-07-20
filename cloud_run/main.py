@@ -357,7 +357,7 @@ Look for:
 Join Optimization
 -----------------
 
-Review every JOIN.
+never remove JOIN.
 
 Determine:
 
