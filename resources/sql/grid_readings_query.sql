@@ -8,3 +8,4 @@ FROM `project-ff7c2ef5-8d88-401a-b86.grid_data.grid_readings` r
 JOIN `project-ff7c2ef5-8d88-401a-b86.grid_data.station_metadata` m
 ON r.station_id = m.station_id
 WHERE r.region = 'west'
+-- trivial change to create a second commit
