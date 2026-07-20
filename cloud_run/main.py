@@ -23,11 +23,15 @@ import subprocess
 import tempfile
 import shutil
 import datetime
+import logging
 
 import flask
 from google.cloud import bigquery
 from google import genai
 import requests
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("sql-review-bot")
 
 app = flask.Flask(__name__)
 
@@ -109,6 +113,8 @@ def build_schema_manifest() -> str:
 
 def get_or_create_cache(schema_manifest: str, beam_context: str):
     combined = schema_manifest + "\n\n[DOWNSTREAM CONSUMER CODE]\n" + beam_context
+    approx_tokens = len(combined) // 4  # rough chars-to-tokens estimate
+    logger.info(f"Attempting context cache creation, manifest ~{approx_tokens} tokens (~{len(combined)} chars)")
     # Vertex AI context caching has a minimum token floor; small hackathon
     # manifests may fail to cache. Fall back to sending it inline if so.
     try:
@@ -120,9 +126,10 @@ def get_or_create_cache(schema_manifest: str, beam_context: str):
                 "display_name": "grid_schema_beam_cache",
             },
         )
+        logger.info(f"Context cache created successfully: {cache.name}")
         return cache.name
     except Exception as e:
-        print(f"Cache creation failed ({e}), falling back to inline context")
+        logger.warning(f"Cache creation failed ({e}), falling back to inline context")
         return None
 
 
@@ -144,12 +151,14 @@ rewritten SQL, no explanation, no markdown fences.
 """
 
     if cache_name:
+        logger.info(f"Calling Gemini WITH cached context: {cache_name}")
         response = genai_client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
             config={"cached_content": cache_name},
         )
     else:
+        logger.info("Calling Gemini WITHOUT cache (inline context fallback)")
         full_prompt = f"[SCHEMA]\n{schema_manifest}\n\n[DOWNSTREAM CODE]\n{beam_context}\n\n{prompt}"
         response = genai_client.models.generate_content(
             model="gemini-2.5-flash",
