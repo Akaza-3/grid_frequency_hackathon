@@ -38,6 +38,11 @@ app = flask.Flask(__name__)
 PROJECT_ID = os.environ["PROJECT_ID"]
 LOCATION = os.environ.get("LOCATION", "us-central1")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")  # PAT with repo scope, set as Cloud Run secret
+if GITHUB_TOKEN:
+    logger.info(f"GITHUB_TOKEN loaded (length {len(GITHUB_TOKEN)}, starts with {GITHUB_TOKEN[:4]}...)")
+else:
+    logger.warning("GITHUB_TOKEN is NOT set in environment")
+
 SQL_DIR = "resources/sql"
 BEAM_DIR = "src/beam"
 
@@ -240,12 +245,19 @@ rewritten SQL, no explanation, no markdown fences.
 
 def post_github_comment(repo_owner: str, repo_name: str, commit_sha: str, body: str):
     if not GITHUB_TOKEN:
-        print("No GITHUB_TOKEN set, skipping comment post. Body was:\n", body)
+        logger.warning("No GITHUB_TOKEN set, skipping comment post.")
+        logger.info(f"Comment body was:\n{body}")
         return
     url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/commits/{commit_sha}/comments"
     headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
-    resp = requests.post(url, json={"body": body}, headers=headers)
-    resp.raise_for_status()
+    logger.info(f"Posting comment to {url}")
+    try:
+        resp = requests.post(url, json={"body": body}, headers=headers)
+        resp.raise_for_status()
+        logger.info(f"Comment posted successfully, id={resp.json().get('id')}")
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"GitHub comment post failed: {e} — response body: {resp.text}")
+        raise
 
 
 @app.route("/review", methods=["POST"])
