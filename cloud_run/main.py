@@ -252,26 +252,26 @@ def get_or_create_cache(schema_manifest: str, beam_context: str):
 
 def ask_gemini_for_rewrite(old_sql: str, new_sql: str, cache_name, schema_manifest, beam_context) -> str:
     prompt = f"""
-You are a Senior Google BigQuery Performance Engineer reviewing a Pull Request.
+You are a Senior Google BigQuery Performance Engineer performing an automated Pull Request review.
 
-Your goal is to reduce query cost while preserving business logic.
+Your goal is to optimize query performance while preserving business logic.
 
-You have access to:
+You are provided:
 
-1. The previous SQL.
-2. The new SQL submitted in this PR.
-3. Table schemas obtained from INFORMATION_SCHEMA.
-4. Table metadata including partitioning and clustering information.
-5. Downstream Beam/Spark consumer code.
+1. Previous SQL
+2. New SQL submitted in this PR
+3. Table schema from INFORMATION_SCHEMA
+4. Partitioning and clustering metadata
+5. Downstream Beam/Spark consumer code
 
-The downstream consumer code is the source of truth for which columns are actually required.
-Never remove a column that is referenced by the downstream code.
+The downstream consumer code is the source of truth.
+Never remove any column that is referenced by downstream code.
 
 ===========================
 PREVIOUS QUERY
 ===========================
 
-{old_sql or "(new file)"}
+{old_sql}
 
 ===========================
 NEW QUERY
@@ -280,44 +280,100 @@ NEW QUERY
 {new_sql}
 
 ===========================
-YOUR TASK
+TASKS
 ===========================
 
-Review the query for performance and cost optimization.
+Review the query and identify opportunities to improve BigQuery performance.
 
-1. Rewrite the SQL only if the rewritten version is guaranteed to preserve business logic.
+You may:
 
-2. Recommend projection pruning by removing unused columns.
+- remove unused projected columns
+- push predicates when safe
+- simplify expressions
+- eliminate redundant computations
+- recommend partition pruning
+- recommend clustering
+- recommend materialized views
+- recommend join improvements
 
-3. Recommend partition pruning if:
-   - the table is partitioned
-   - the partition column is not being filtered
+Only rewrite SQL if business logic remains identical.
 
-4. Recommend clustering if:
-   - repeated joins or filters indicate clustering would improve performance.
+Do NOT estimate query cost.
+Do NOT estimate bytes scanned.
+Do NOT estimate dollar savings.
 
-5. Recommend predicate pushdown where applicable.
+Those values are calculated separately by the application.
 
-6. Recommend materialized views only if the query is repeatedly aggregating large datasets.
-
-7. Recommend join improvements only if they do not alter semantics.
-
-8. Never change joins, filters or aggregations unless they are provably equivalent.
-
-9. Explain WHY every recommendation improves performance.
-
-10. Estimate how the optimization reduces bytes scanned.
-
-11. Assume query pricing is based on BigQuery on-demand pricing ($5 per TB scanned).
+Validate that every column required by downstream Beam/Spark code is still present.
 
 ===========================
-OUTPUT FORMAT
+OUTPUT
 ===========================
 
-## Optimized SQL
+Return ONLY valid JSON.
 
-```sql
-...
+Schema:
+
+{
+  "business_logic_status": "PASS" | "FAIL",
+
+  "business_logic_reason": "<one sentence>",
+
+  "optimized_sql": "<complete optimized SQL>",
+
+  "summary": "<2-3 sentence overall summary>",
+
+  "optimizations": [
+    {
+      "type": "Projection Pruning",
+      "status": "Implemented",
+      "description": "Removed unused columns from SELECT."
+    },
+    {
+      "type": "Predicate Pushdown",
+      "status": "Not Applicable",
+      "description": "Predicates already applied optimally."
+    },
+    {
+      "type": "Partition Pruning",
+      "status": "Recommendation",
+      "description": "Table is partitioned on event_date but query does not filter it."
+    },
+    {
+      "type": "Clustering",
+      "status": "Recommendation",
+      "description": "Cluster table by region."
+    },
+    {
+      "type": "Join Optimization",
+      "status": "None",
+      "description": "Current join strategy is appropriate."
+    },
+    {
+      "type": "Materialized View",
+      "status": "None",
+      "description": "Materialized view is unlikely to provide benefit."
+    }
+  ]
+}
+
+Rules:
+
+Return ONLY JSON.
+
+Do not wrap JSON in markdown.
+
+Do not include explanations outside JSON.
+
+Do not include ```json.
+
+Do not estimate cost.
+
+Do not estimate bytes.
+
+Do not estimate savings.
+
+The optimized SQL must be executable in BigQuery.
 """
 
     if cache_name:
