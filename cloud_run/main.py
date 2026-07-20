@@ -94,13 +94,30 @@ def _file_exists_at(repo_dir, sha, path):
     )
     return result.returncode == 0
 
-
 def dry_run_bytes(sql_text: str) -> int:
-    if not sql_text or not sql_text.strip():
+    if not sql_text:
         return 0
-    job_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=False)
-    job = bq_client.query(sql_text, job_config=job_config)
-    return job.total_bytes_processed
+
+    sql_text = extract_sql(sql_text)
+
+    if not sql_text.strip():
+        return 0
+
+    try:
+        job_config = bigquery.QueryJobConfig(
+            dry_run=True,
+            use_query_cache=False
+        )
+
+        job = bq_client.query(sql_text, job_config=job_config)
+
+        return job.total_bytes_processed
+
+    except Exception as e:
+        logger.exception(f"Dry run failed:\n{sql_text}")
+        logger.exception(e)
+
+        return 0
 
 
 def _extract_tables(sql_text: str):
@@ -114,66 +131,82 @@ def _extract_tables(sql_text: str):
 
 def build_schema_manifest(sql_text: str) -> str:
     tables = _extract_tables(sql_text)
+    logger.info(f"Extracted tables: {tables}")
+
     manifest = []
 
     for table in tables:
-        project, dataset, table_name = table.split(".")
+        try:
+            parts = table.split(".")
 
-        # Column metadata
-        column_query = f"""
-        SELECT
-            column_name,
-            data_type,
-            is_partitioning_column,
-            clustering_ordinal_position
-        FROM `{project}.{dataset}.INFORMATION_SCHEMA.COLUMNS`
-        WHERE table_name = '{table_name}'
-        ORDER BY ordinal_position
-        """
+            if len(parts) == 3:
+                project, dataset, table_name = parts
+            elif len(parts) == 2:
+                project = PROJECT_ID
+                dataset, table_name = parts
+            else:
+                logger.warning(f"Skipping unsupported table reference: {table}")
+                continue
 
-        # Table metadata
-        table_query = f"""
-        SELECT
-            table_name,
-            row_count,
-            size_bytes,
-            managed_table_type,
-            is_insertable_into
-        FROM `{project}.{dataset}.INFORMATION_SCHEMA.TABLE_STORAGE`
-        WHERE table_name = '{table_name}'
-        """
+            logger.info(f"Fetching INFORMATION_SCHEMA for {project}.{dataset}.{table_name}")
 
-        columns = bq_client.query(column_query).result()
-        table_info = list(bq_client.query(table_query).result())
+            column_query = f"""
+            SELECT
+                column_name,
+                data_type,
+                is_partitioning_column,
+                clustering_ordinal_position
+            FROM `{project}.{dataset}.INFORMATION_SCHEMA.COLUMNS`
+            WHERE table_name='{table_name}'
+            ORDER BY ordinal_position
+            """
 
-        manifest.append(f"\n===== TABLE : {table} =====")
+            columns = list(bq_client.query(column_query).result())
 
-        if table_info:
-            t = table_info[0]
-            manifest.append(f"Rows : {t.row_count}")
-            manifest.append(f"Storage : {t.size_bytes} bytes")
+            table_query = f"""
+            SELECT
+                table_name,
+                row_count,
+                size_bytes
+            FROM `{project}.{dataset}.INFORMATION_SCHEMA.TABLE_STORAGE`
+            WHERE table_name='{table_name}'
+            """
 
-        partition_cols = []
-        clustering_cols = []
+            try:
+                table_info = list(bq_client.query(table_query).result())
+            except Exception as e:
+                logger.warning(f"Could not fetch TABLE_STORAGE for {table}: {e}")
+                table_info = []
 
-        for c in columns:
-            if c.is_partitioning_column == "YES":
-                partition_cols.append(c.column_name)
+            manifest.append(f"\n===== TABLE : {table} =====")
 
-            if c.clustering_ordinal_position:
-                clustering_cols.append(c.column_name)
+            if table_info:
+                t = table_info[0]
+                manifest.append(f"Rows : {t.row_count}")
+                manifest.append(f"Storage : {t.size_bytes} bytes")
+
+            partition_cols = []
+            clustering_cols = []
+
+            for c in columns:
+                manifest.append(f"- {c.column_name} ({c.data_type})")
+
+                if c.is_partitioning_column == "YES":
+                    partition_cols.append(c.column_name)
+
+                if c.clustering_ordinal_position:
+                    clustering_cols.append(c.column_name)
 
             manifest.append(
-                f"- {c.column_name} ({c.data_type})"
+                f"Partition Columns : {partition_cols if partition_cols else 'None'}"
             )
 
-        manifest.append(
-            f"Partition Columns : {partition_cols if partition_cols else 'None'}"
-        )
+            manifest.append(
+                f"Cluster Columns : {clustering_cols if clustering_cols else 'None'}"
+            )
 
-        manifest.append(
-            f"Cluster Columns : {clustering_cols if clustering_cols else 'None'}"
-        )
+        except Exception:
+            logger.exception(f"Failed to discover schema for {table}")
 
     return "\n".join(manifest)
 
@@ -303,6 +336,25 @@ OUTPUT FORMAT
         )
     return response.text.strip()
 
+def extract_sql(response_text: str) -> str:
+    """
+    Extract SQL from a Gemini markdown response.
+    """
+
+    if not response_text:
+        return ""
+
+    match = re.search(r"```sql\s*(.*?)```", response_text, re.DOTALL | re.IGNORECASE)
+
+    if match:
+        return match.group(1).strip()
+
+    match = re.search(r"```\s*(.*?)```", response_text, re.DOTALL)
+
+    if match:
+        return match.group(1).strip()
+
+    return response_text.strip()
 
 def post_github_comment(repo_owner: str, repo_name: str, commit_sha: str, body: str):
     if not GITHUB_TOKEN:
@@ -333,9 +385,6 @@ def review():
     changed, beam_context = clone_and_diff(repo_clone_url, before_sha, after_sha)
     if not changed:
         return flask.jsonify({"status": "no_sql_changes"})
-
-    schema_manifest = build_schema_manifest(change["new"])
-    cache_name = get_or_create_cache(schema_manifest, beam_context)
 
     comment_sections = []
     for change in changed:
