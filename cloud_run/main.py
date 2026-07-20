@@ -263,7 +263,7 @@ def get_or_create_cache(schema_manifest: str, beam_context: str):
         return None
 
 
-def ask_gemini_for_rewrite(old_sql: str, new_sql: str, cache_name, schema_manifest, beam_context) -> str:
+def ask_gemini_for_rewrite(old_sql: str, new_sql: str, cache_name, schema_manifest, beam_context, original_bytes: int) -> str:
     prompt = f"""
 You are a Senior Google BigQuery Performance Engineer responsible for reviewing production SQL used in enterprise data pipelines.
 
