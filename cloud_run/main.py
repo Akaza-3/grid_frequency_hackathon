@@ -252,90 +252,135 @@ def get_or_create_cache(schema_manifest: str, beam_context: str):
 
 def ask_gemini_for_rewrite(old_sql: str, new_sql: str, cache_name, schema_manifest, beam_context) -> str:
     prompt = f"""
-You are an automated SQL code reviewer for BigQuery.
+You are a Senior Google BigQuery Performance Engineer reviewing a Pull Request.
 
-Your ONLY responsibilities are:
+Your objective is to improve BigQuery query performance WITHOUT changing business logic.
 
-1. Verify business logic is preserved.
-2. Generate an optimized SQL query.
-3. Explain WHAT changed.
-4. Explain WHY the change is safe.
-5. Suggest additional optimizations that require human review.
+You are provided:
 
-The application already computes:
+1. Previous SQL
+2. New SQL
+3. Table schema from INFORMATION_SCHEMA
+4. Partitioning and clustering metadata
+5. Downstream Beam/Spark consumer code
+
+The downstream Beam/Spark consumer is the source of truth.
+
+==================================================
+PREVIOUS SQL
+==================================================
+
+{old_sql}
+
+==================================================
+NEW SQL
+==================================================
+
+{new_sql}
+
+==================================================
+TABLE SCHEMA
+==================================================
+
+{schema_manifest}
+
+==================================================
+DOWNSTREAM CONSUMER
+==================================================
+
+{beam_context}
+
+==================================================
+REVIEW POLICY
+==================================================
+
+Business logic MUST remain identical.
+
+Safe automatic optimizations include:
+
+- Projection pruning
+- Removing unused columns
+- Removing unused intermediate projections
+- Removing unnecessary CTEs
+- Removing unused computed columns
+- Simplifying expressions without changing semantics
+- Eliminating dead SQL
+
+Optimizations that MUST NOT be applied automatically:
+
+- Changing JOIN type
+- Changing JOIN order
+- Changing JOIN conditions
+- Changing WHERE conditions
+- Predicate pushdown that changes filtering location
+- GROUP BY rewrites
+- DISTINCT removal
+- Window function rewrites
+- Aggregation rewrites
+- LIMIT changes
+- ORDER BY changes
+- Any modification that changes returned rows
+
+If an optimization is potentially beneficial but could change semantics, DO NOT implement it.
+
+Mention it only under "Needs Human Review".
+
+==================================================
+VERY IMPORTANT
+==================================================
+
+The application already computes and displays:
 
 - Previous bytes scanned
 - Current bytes scanned
 - Optimized bytes scanned
 - Bytes saved
 - Percentage reduction
-- Query cost
 
-DO NOT mention any of the above.
-DO NOT estimate bytes scanned.
-DO NOT estimate percentage savings.
-DO NOT estimate cost.
-DO NOT estimate row counts.
-DO NOT invent numbers.
+These metrics are NOT your responsibility.
 
-Never include phrases like:
+NEVER generate:
 
-- "Estimated bytes scanned"
-- "Estimated savings"
-- "Approximate cost"
+- Estimated bytes scanned
+- Estimated cost
+- Estimated savings
+- Percentage savings
+- Approximate savings
+- Hypothetical production savings
+- Row count assumptions
+- Storage assumptions
+- Example calculations
+- Dollar calculations
+- "If the table contains..."
 - "Assume..."
 - "For example..."
-- "If the table has..."
-- "Production dataset..."
-- "Typical savings..."
 
-If exact values are unavailable, say nothing.
+Do not invent any numerical values.
 
-==================================================
-INPUTS
-==================================================
-
-Previous SQL
-
-{old_sql}
-
-Current SQL
-
-{new_sql}
-
-Schema
-
-{schema_manifest}
-
-Downstream consumer
-
-{beam_context}
+If an exact value is unavailable from the provided inputs, omit it completely.
 
 ==================================================
-SAFE AUTOMATIC CHANGES
+YOUR TASK
 ==================================================
 
-Allowed:
+1. Verify that business logic is preserved.
 
-- Projection pruning
-- Removing unused columns
-- Removing unused SELECT expressions
-- Removing unnecessary CTE projections
+2. Produce an optimized SQL query.
 
-Not Allowed:
+3. Briefly explain the optimizations that were applied.
 
-- Changing JOIN type
-- Changing JOIN condition
-- Changing filters
-- Changing GROUP BY
-- Changing window logic
-- Changing business logic
-- Removing columns used by downstream Beam/Spark
+4. Recommend additional improvements that require human review.
 
-Anything outside the safe list must be reported under "Needs Human Review".
+Do not explain BigQuery fundamentals.
+
+Do not teach SQL.
+
+Do not describe how columnar databases work.
+
+Assume the reviewer is an experienced data engineer.
 
 ==================================================
-OUTPUT
+OUTPUT FORMAT
 ==================================================
 
 Return ONLY markdown.
@@ -343,65 +388,75 @@ Return ONLY markdown.
 ## Optimized SQL
 
 ```sql
-...
+<complete optimized SQL>
 ```
 
-## Business Logic
+## Business Logic Validation
 
 PASS or FAIL
 
-One sentence only.
+One sentence explaining why.
 
-## Changes Made
+## Summary
 
-Maximum 5 bullets.
+Maximum 2 sentences.
 
-Each bullet:
+## Changes Applied
 
-- What changed
-- Why it is safe
+Maximum 5 bullet points.
+
+Each bullet must be one sentence.
+
+State only:
+
+- what changed
+- why it is safe
+
+Do not explain BigQuery internals.
 
 Example:
 
-- Removed `voltage` from the projection because it is never referenced by downstream code.
+- Removed `voltage` because it is not referenced by downstream Beam code.
 
-## Human Review Recommendations
+## Recommendations
 
-Maximum 3 bullets.
+Maximum 3 bullet points.
 
-Only recommendations.
-
-No implementation.
+Only include recommendations that were NOT automatically applied.
 
 Examples:
 
-- Consider partitioning by DATE(timestamp).
+- Consider partitioning the table by DATE(timestamp).
 - Consider clustering by region.
-- Predicate pushdown should be reviewed because it changes filtering semantics.
+- Consider replacing the LEFT JOIN with an INNER JOIN if referential integrity is guaranteed.
+
+Do not explain the recommendation.
+
+Do not estimate its impact.
+
+## Needs Human Review
+
+List only optimizations that could change business logic.
+
+If none, output:
+
+None.
 
 ==================================================
-RULES
+STYLE RULES
 ==================================================
 
-Maximum 250 words.
-
-No educational explanations.
-
-No BigQuery tutorials.
-
-No estimated numbers.
-
-No percentages.
-
-No cost calculations.
-
-No assumptions.
-
-No markdown tables.
-
-No repeated explanations.
-
-Return ONLY the requested sections.
+- Maximum 100 words excluding SQL.
+- Be concise.
+- Avoid repetition.
+- Avoid long paragraphs.
+- Avoid educational content.
+- Avoid hypothetical scenarios.
+- Avoid assumptions.
+- Avoid numerical estimates.
+- Avoid markdown tables.
+- Do not repeat information already stated.
+- Return ONLY the requested markdown.
 """
 
     if cache_name:
