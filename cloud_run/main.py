@@ -24,6 +24,7 @@ import tempfile
 import shutil
 import datetime
 import logging
+import re
 
 import flask
 from google.cloud import bigquery
@@ -102,72 +103,79 @@ def dry_run_bytes(sql_text: str) -> int:
     return job.total_bytes_processed
 
 
-def build_schema_manifest() -> str:
-    # Hackathon-scoped: hardcoded. Real version pulls INFORMATION_SCHEMA.COLUMNS.
-    # Expanded with real detail (not padding) so it clears the Vertex AI
-    # context-caching minimum token floor (1024 tokens for this model).
-    return """
-    ==================================================
-    BANK-WIDE / DEMO DATA ARCHITECTURE BLUEPRINT
-    ==================================================
-
-    [TABLE: grid_data.grid_readings]
-    Columns:
-      - station_id STRING: unique identifier for the reporting station,
-        joins to station_metadata.station_id.
-      - timestamp TIMESTAMP: UTC timestamp of the reading, one row per
-        station per minute in production volumes.
-      - frequency_hz FLOAT: measured grid frequency in Hz. Nominal value
-        is 50.0Hz; readings below 49.9Hz indicate under-frequency load
-        shedding conditions and are the primary signal consumed by
-        downstream pipelines.
-      - voltage FLOAT: measured line voltage.
-      - region STRING: geographic region the station belongs to
-        (e.g. 'west', 'east').
-    Partitioning: NOT partitioned, NOT clustered in this demo dataset.
-    In a production deployment this table would typically be partitioned
-    by DATE(timestamp) and clustered by region, since most consumer
-    queries filter on both.
-
-    [TABLE: grid_data.station_metadata]
-    Columns:
-      - station_id STRING: unique identifier, primary join key.
-      - station_name STRING: human-readable station name.
-      - region STRING: geographic region.
-      - capacity_mw FLOAT: rated capacity in megawatts.
-    Partitioning: NOT partitioned, NOT clustered. Small dimension table,
-    full scans are cheap regardless of query shape.
-
-    [GOLDEN QUERY EXAMPLE 1 — column pruning]
-    Bad:
-      SELECT * FROM grid_readings r JOIN station_metadata m
-      ON r.station_id = m.station_id WHERE r.region = 'west'
-    Good (when only station_id, frequency_hz, region are consumed
-    downstream):
-      SELECT r.station_id, r.frequency_hz, r.region
-      FROM grid_readings r JOIN station_metadata m
-      ON r.station_id = m.station_id WHERE r.region = 'west'
-    Rationale: BigQuery is columnar — bytes scanned is driven by which
-    columns are referenced, not by row filtering or join order. Dropping
-    unused columns from the SELECT list is the only lever available on
-    an unpartitioned table like this one.
-
-    [GOLDEN QUERY EXAMPLE 2 — predicate placement]
-    On a partitioned table (not applicable to this demo dataset, but
-    relevant if this schema is extended later): filtering on the
-    partition column before a join enables partition pruning and can
-    reduce bytes scanned dramatically. On unpartitioned tables, moving
-    a WHERE clause earlier has no cost effect in BigQuery's columnar
-    model — only column selection does.
-
-    [REVIEW POLICY]
-    Any suggested rewrite must preserve exact join semantics and exact
-    filter conditions. Only column pruning is considered a safe,
-    automatic-suggestion-eligible optimization. Anything else (join
-    reordering, aggregation changes, subquery restructuring) should be
-    flagged for human review rather than auto-suggested.
+def _extract_tables(sql_text: str):
     """
+    Extract fully-qualified table names from SQL enclosed in backticks.
+    Example:
+    `project.dataset.table`
+    """
+    return list(set(re.findall(r'`([^`]+)`', sql_text)))
 
+
+def build_schema_manifest(sql_text: str) -> str:
+    tables = _extract_tables(sql_text)
+    manifest = []
+
+    for table in tables:
+        project, dataset, table_name = table.split(".")
+
+        # Column metadata
+        column_query = f"""
+        SELECT
+            column_name,
+            data_type,
+            is_partitioning_column,
+            clustering_ordinal_position
+        FROM `{project}.{dataset}.INFORMATION_SCHEMA.COLUMNS`
+        WHERE table_name = '{table_name}'
+        ORDER BY ordinal_position
+        """
+
+        # Table metadata
+        table_query = f"""
+        SELECT
+            table_name,
+            row_count,
+            size_bytes,
+            managed_table_type,
+            is_insertable_into
+        FROM `{project}.{dataset}.INFORMATION_SCHEMA.TABLE_STORAGE`
+        WHERE table_name = '{table_name}'
+        """
+
+        columns = bq_client.query(column_query).result()
+        table_info = list(bq_client.query(table_query).result())
+
+        manifest.append(f"\n===== TABLE : {table} =====")
+
+        if table_info:
+            t = table_info[0]
+            manifest.append(f"Rows : {t.row_count}")
+            manifest.append(f"Storage : {t.size_bytes} bytes")
+
+        partition_cols = []
+        clustering_cols = []
+
+        for c in columns:
+            if c.is_partitioning_column == "YES":
+                partition_cols.append(c.column_name)
+
+            if c.clustering_ordinal_position:
+                clustering_cols.append(c.column_name)
+
+            manifest.append(
+                f"- {c.column_name} ({c.data_type})"
+            )
+
+        manifest.append(
+            f"Partition Columns : {partition_cols if partition_cols else 'None'}"
+        )
+
+        manifest.append(
+            f"Cluster Columns : {clustering_cols if clustering_cols else 'None'}"
+        )
+
+    return "\n".join(manifest)
 
 CACHE_DISPLAY_NAME = "grid_schema_beam_cache"
 
@@ -210,20 +218,73 @@ def get_or_create_cache(schema_manifest: str, beam_context: str):
 
 
 def ask_gemini_for_rewrite(old_sql: str, new_sql: str, cache_name, schema_manifest, beam_context) -> str:
-    prompt = f"""You are reviewing a BigQuery SQL change in a PR.
+    prompt = f"""
+You are a Senior Google BigQuery Performance Engineer reviewing a Pull Request.
 
-PREVIOUS QUERY:
-{old_sql or "(new file, no previous version)"}
+Your goal is to reduce query cost while preserving business logic.
 
-NEW QUERY (as submitted in this PR):
+You have access to:
+
+1. The previous SQL.
+2. The new SQL submitted in this PR.
+3. Table schemas obtained from INFORMATION_SCHEMA.
+4. Table metadata including partitioning and clustering information.
+5. Downstream Beam/Spark consumer code.
+
+The downstream consumer code is the source of truth for which columns are actually required.
+Never remove a column that is referenced by the downstream code.
+
+===========================
+PREVIOUS QUERY
+===========================
+
+{old_sql or "(new file)"}
+
+===========================
+NEW QUERY
+===========================
+
 {new_sql}
 
-Task: Suggest a rewrite of the NEW QUERY that reduces the amount of data
-scanned, using the schema and downstream consumer code as ground truth
-for which columns are actually required. Do not drop any column that
-the downstream code in [DOWNSTREAM CONSUMER CODE] actually reads —
-preserving business logic is a hard constraint. Return ONLY the
-rewritten SQL, no explanation, no markdown fences.
+===========================
+YOUR TASK
+===========================
+
+Review the query for performance and cost optimization.
+
+1. Rewrite the SQL only if the rewritten version is guaranteed to preserve business logic.
+
+2. Recommend projection pruning by removing unused columns.
+
+3. Recommend partition pruning if:
+   - the table is partitioned
+   - the partition column is not being filtered
+
+4. Recommend clustering if:
+   - repeated joins or filters indicate clustering would improve performance.
+
+5. Recommend predicate pushdown where applicable.
+
+6. Recommend materialized views only if the query is repeatedly aggregating large datasets.
+
+7. Recommend join improvements only if they do not alter semantics.
+
+8. Never change joins, filters or aggregations unless they are provably equivalent.
+
+9. Explain WHY every recommendation improves performance.
+
+10. Estimate how the optimization reduces bytes scanned.
+
+11. Assume query pricing is based on BigQuery on-demand pricing ($5 per TB scanned).
+
+===========================
+OUTPUT FORMAT
+===========================
+
+## Optimized SQL
+
+```sql
+...
 """
 
     if cache_name:
@@ -273,7 +334,7 @@ def review():
     if not changed:
         return flask.jsonify({"status": "no_sql_changes"})
 
-    schema_manifest = build_schema_manifest()
+    schema_manifest = build_schema_manifest(change["new"])
     cache_name = get_or_create_cache(schema_manifest, beam_context)
 
     comment_sections = []
@@ -281,9 +342,17 @@ def review():
         old_bytes = dry_run_bytes(change["old"]) if change["old"] else None
         new_bytes = dry_run_bytes(change["new"])
 
+        schema_manifest = build_schema_manifest(change["new"])
+        cache_name = get_or_create_cache(schema_manifest, beam_context)
+
         rewrite = ask_gemini_for_rewrite(
-            change["old"], change["new"], cache_name, schema_manifest, beam_context
+            change["old"],
+            change["new"],
+            cache_name,
+            schema_manifest,
+            beam_context,
         )
+
         rewrite_bytes = dry_run_bytes(rewrite)
 
         section = f"### `{change['path']}`\n"
@@ -300,7 +369,8 @@ def review():
     return flask.jsonify({"status": "ok", "changed_files": [c["path"] for c in changed]})
 
 
-@app.route("/", methods=["GET"])
+@app.route("/", methods=["GET"])for change in changed:
+
 def health():
     return "ok"
 
