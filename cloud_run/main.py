@@ -568,13 +568,13 @@ Do NOT invent execution costs or dollar values unless sufficient information is 
 
 Include the following object in the JSON response:
 
-"cost_analysis": {
+"cost_analysis": {{
     "original_bytes": "...",
     "optimized_bytes": "...",
     "bytes_saved": "...",
     "percent_reduction": "...",
     "estimated_cost_reduction": "..."
-}
+}}
 """
 
     if cache_name:
