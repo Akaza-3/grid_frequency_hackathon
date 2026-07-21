@@ -10,8 +10,9 @@ only be checked against the capacity_report branch's needs.
 
 Run locally with DirectRunner:
     python3 src/beam/frequency_pipeline.py
+"""
 
-REVIEW_POLICY_SUPPLEMENT = 
+REVIEW_POLICY_SUPPLEMENT = """
 ========================================================
 REVIEW POLICY AND OPTIMIZATION GUIDANCE
 ========================================================
