@@ -9,8 +9,6 @@ delinquency_alerts.sql currently selects via SELECT *.
 
 
 def is_severe_delinquency(row: dict) -> bool:
-    # BUG: delinq_2yrs arrives as STRING from SELECT * — comparing > 2 will
-    # raise TypeError at runtime (str vs int comparison in Python 3).
     return row["delinq_2yrs"] > 2
 
 

@@ -13,8 +13,6 @@ output only because of the final SELECT *, not because this branch
 
 
 def format_dashboard_row(row: dict) -> dict:
-    # BUG: int_rate comes from base CTE which does l.* — raw loan table column
-    # is a STRING (e.g. "12.5"). Multiplying str * float raises TypeError.
     effective_rate = row["int_rate"] * 0.01
     return {
         "customer_id": row["customer_id"],

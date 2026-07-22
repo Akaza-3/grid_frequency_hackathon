@@ -22,7 +22,7 @@ def format_risk_flag(row: dict) -> dict:
     return {
         "customer_name": row["customer_name"],
         "grade": row["grade"],
-        "sub_grade": row["sub_grade"],  # referenced but NOT in SQL's SELECT
+        "sub_grade": row["sub_grade"],
         "dti": row["dti"],
         "revol_util": row["revol_util"],
         "out_prncp": row["out_prncp"],
