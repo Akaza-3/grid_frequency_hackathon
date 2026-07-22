@@ -21,6 +21,7 @@ from dashboard import format_dashboard_row, is_meaningful_exposure
 from delinquency_alerts import format_delinquency_alert
 from employer_concentration import format_employer_row
 from watchlist import format_watchlist_row
+from stress_test import format_stress_row, is_stress_candidate
 
 PROJECT_ID = "project-ff7c2ef5-8d88-401a-b86"
 LENDING_QUERY_PATH = "resources/sql/retail_lending_portfolio.sql"
@@ -28,6 +29,7 @@ DASHBOARD_QUERY_PATH = "resources/sql/customer_risk_dashboard.sql"
 DELINQUENCY_QUERY_PATH = "resources/sql/delinquency_alerts.sql"
 EMPLOYER_QUERY_PATH = "resources/sql/employer_concentration.sql"
 WATCHLIST_QUERY_PATH = "resources/sql/high_risk_watchlist.sql"
+STRESS_TEST_QUERY_PATH = "resources/sql/portfolio_stress_test.sql"
 
 
 def load_query(path: str) -> str:
@@ -105,6 +107,17 @@ def run():
             )
             | "FormatWatchlistRow" >> beam.Map(format_watchlist_row)
             | "PrintWatchlist" >> beam.Map(lambda r: print("WATCHLIST:", r))
+        )
+
+        # --- Source 6: portfolio_stress_test.sql ---
+        (
+            p
+            | "ReadPortfolioStressTest" >> beam.io.ReadFromBigQuery(
+                query=load_query(STRESS_TEST_QUERY_PATH), use_standard_sql=True,
+            )
+            | "FilterStressCandidates" >> beam.Filter(is_stress_candidate)
+            | "FormatStressRow" >> beam.Map(format_stress_row)
+            | "PrintStressTest" >> beam.Map(lambda r: print("STRESS_TEST:", r))
         )
 
 
