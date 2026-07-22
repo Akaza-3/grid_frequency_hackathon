@@ -1,7 +1,6 @@
 -- resources/sql/delinquency_alerts.sql
 --comment 1
 --comment 2
---comment 3
 SELECT *
 FROM `project-ff7c2ef5-8d88-401a-b86.loan_data.loan` l
 JOIN `project-ff7c2ef5-8d88-401a-b86.loan_data.customers` c
