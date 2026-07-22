@@ -59,6 +59,7 @@ omitting it silently, since ordering dependencies are not always
 visible from the consumer code alone.
 """
 
+# src/beam/pipeline.py
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 
@@ -66,13 +67,15 @@ from cleaning import clean_row
 from validation import is_valid
 from rm_report import format_rm_report
 from risk_scoring import is_elevated_risk, format_risk_flag
+from dashboard import format_dashboard_row, is_meaningful_exposure
 
 PROJECT_ID = "project-ff7c2ef5-8d88-401a-b86"
-QUERY_PATH = "resources/sql/retail_lending_portfolio.sql"
+LENDING_QUERY_PATH = "resources/sql/retail_lending_portfolio.sql"
+DASHBOARD_QUERY_PATH = "resources/sql/customer_risk_dashboard.sql"
 
 
-def load_query() -> str:
-    with open(QUERY_PATH) as f:
+def load_query(path: str) -> str:
+    with open(path) as f:
         return f.read()
 
 
@@ -83,10 +86,13 @@ def run():
     )
 
     with beam.Pipeline(options=options) as p:
+
+        # --- Source 1: retail_lending_portfolio.sql ---
+        # Feeds the RM report and risk scoring branches.
         cleaned = (
             p
-            | "ReadCustomerLoanSummary" >> beam.io.ReadFromBigQuery(
-                query=load_query(), use_standard_sql=True,
+            | "ReadRetailLendingPortfolio" >> beam.io.ReadFromBigQuery(
+                query=load_query(LENDING_QUERY_PATH), use_standard_sql=True,
             )
             | "CleanRows" >> beam.Map(clean_row)
             | "FilterValid" >> beam.Filter(is_valid)
@@ -103,6 +109,20 @@ def run():
             | "FilterElevatedRisk" >> beam.Filter(is_elevated_risk)
             | "FormatRiskFlag" >> beam.Map(format_risk_flag)
             | "PrintRiskFlags" >> beam.Map(lambda r: print("RISK_FLAG:", r))
+        )
+
+        # --- Source 2: customer_risk_dashboard.sql ---
+        # Independent query, feeds only the portfolio dashboard branch.
+        # Only needs identity + pre-aggregated metrics, NOT the wide
+        # raw loan columns carried by `base`'s SELECT l.*.
+        (
+            p
+            | "ReadCustomerRiskDashboard" >> beam.io.ReadFromBigQuery(
+                query=load_query(DASHBOARD_QUERY_PATH), use_standard_sql=True,
+            )
+            | "FilterMeaningfulExposure" >> beam.Filter(is_meaningful_exposure)
+            | "FormatDashboardRow" >> beam.Map(format_dashboard_row)
+            | "PrintDashboard" >> beam.Map(lambda r: print("DASHBOARD:", r))
         )
 
 
