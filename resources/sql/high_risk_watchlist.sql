@@ -1,5 +1,4 @@
 -- resources/sql/high_risk_watchlist.sql
---comment 1
 WITH base AS (
     SELECT
         l.*,
