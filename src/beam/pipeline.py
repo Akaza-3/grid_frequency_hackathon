@@ -62,13 +62,17 @@ visible from the consumer code alone.
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 
+from cleaning import clean_row
+from validation import is_valid
+from rm_report import format_rm_report
+from risk_scoring import is_elevated_risk, format_risk_flag
+
 PROJECT_ID = "project-ff7c2ef5-8d88-401a-b86"
-ALERTS_QUERY_PATH = "resources/sql/grid_readings_query.sql"
-CAPACITY_QUERY_PATH = "resources/sql/station_capacity_query.sql"
+QUERY_PATH = "resources/sql/retail_lending_portfolio.sql"
 
 
-def load_query(path: str) -> str:
-    with open(path) as f:
+def load_query() -> str:
+    with open(QUERY_PATH) as f:
         return f.read()
 
 
@@ -79,42 +83,26 @@ def run():
     )
 
     with beam.Pipeline(options=options) as p:
-
-        # --- Branch 1: underfrequency alerting ---
-        # Sourced from grid_readings_query.sql. Only needs station_id,
-        # frequency_hz, region, and timestamp (for ordering the alert).
-        (
+        cleaned = (
             p
-            | "ReadAlertsData" >> beam.io.ReadFromBigQuery(
-                query=load_query(ALERTS_QUERY_PATH),
-                use_standard_sql=True,
+            | "ReadCustomerLoanSummary" >> beam.io.ReadFromBigQuery(
+                query=load_query(), use_standard_sql=True,
             )
-            | "FilterUnderfrequency" >> beam.Filter(lambda r: r["frequency_hz"] < 49.9)
-            | "FormatAlert" >> beam.Map(lambda r: {
-                "station_id": r["station_id"],
-                "frequency_hz": r["frequency_hz"],
-                "region": r["region"],
-                "timestamp": r["timestamp"],
-            })
-            | "PrintAlerts" >> beam.Map(lambda r: print("ALERT:", r))
+            | "CleanRows" >> beam.Map(clean_row)
+            | "FilterValid" >> beam.Filter(is_valid)
         )
 
-        # --- Branch 2: regional capacity utilization report ---
-        # Sourced from station_capacity_query.sql. Only needs region,
-        # station_name, capacity_mw — never touches frequency_hz,
-        # timestamp, or voltage.
         (
-            p
-            | "ReadCapacityData" >> beam.io.ReadFromBigQuery(
-                query=load_query(CAPACITY_QUERY_PATH),
-                use_standard_sql=True,
-            )
-            | "KeepCapacityFields" >> beam.Map(lambda r: {
-                "region": r["region"],
-                "station_name": r["station_name"],
-                "capacity_mw": r["capacity_mw"],
-            })
-            | "PrintCapacity" >> beam.Map(lambda r: print("CAPACITY:", r))
+            cleaned
+            | "FormatRMReport" >> beam.Map(format_rm_report)
+            | "PrintRMReport" >> beam.Map(lambda r: print("RM_REPORT:", r))
+        )
+
+        (
+            cleaned
+            | "FilterElevatedRisk" >> beam.Filter(is_elevated_risk)
+            | "FormatRiskFlag" >> beam.Map(format_risk_flag)
+            | "PrintRiskFlags" >> beam.Map(lambda r: print("RISK_FLAG:", r))
         )
 
 
