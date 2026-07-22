@@ -1,5 +1,4 @@
 -- resources/sql/retail_lending_portfolio.sql
---comment 1
 WITH loan_data AS (
     SELECT *
     FROM `project-ff7c2ef5-8d88-401a-b86.loan_data.loan`
