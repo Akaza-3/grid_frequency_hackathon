@@ -1,5 +1,6 @@
 -- resources/sql/employer_concentration.sql
 --comment 1
+--comment 2
 WITH loan_data AS (
     SELECT *
     FROM `project-ff7c2ef5-8d88-401a-b86.loan_data.loan`
