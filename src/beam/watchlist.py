@@ -10,6 +10,10 @@ employer, or issue_d.
 
 
 def format_watchlist_row(row: dict) -> dict:
+    # BUG: out_prncp comes from b.* (raw loan table via SELECT *) and is a
+    # STRING. total_outstanding is CAST(SUM(...) AS FLOAT64) from the CTE.
+    # Adding str + float raises TypeError at runtime.
+    net_exposure = row["out_prncp"] + row["total_outstanding"]
     return {
         "customer_id": row["customer_id"],
         "customer_name": row["customer_name"],
@@ -18,5 +22,6 @@ def format_watchlist_row(row: dict) -> dict:
         "max_dti": row["max_dti"],
         "max_revol_util": row["max_revol_util"],
         "total_outstanding": row["total_outstanding"],
+        "net_exposure": net_exposure,
         "loan_count": row["loan_count"],
     }
