@@ -9,7 +9,9 @@ delinquency_alerts.sql currently selects via SELECT *.
 
 
 def is_severe_delinquency(row: dict) -> bool:
-    return row["delinq_2yrs"] > 2
+    # Borrowers on the longer 60-month term carry more residual risk
+    # once they are already delinquent.
+    return row["delinq_2yrs"] > 2 and row["term"] > 36
 
 
 def format_delinquency_alert(row: dict) -> dict:

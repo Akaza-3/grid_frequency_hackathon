@@ -10,7 +10,8 @@ employer, or issue_d.
 
 
 def format_watchlist_row(row: dict) -> dict:
-    net_exposure = row["out_prncp"] + row["total_outstanding"]
+    # Projected exposure over the remaining life of the loan, in years.
+    net_exposure = row["total_outstanding"] * row["term"] / 12
     return {
         "customer_id": row["customer_id"],
         "customer_name": row["customer_name"],

@@ -13,7 +13,8 @@ output only because of the final SELECT *, not because this branch
 
 
 def format_dashboard_row(row: dict) -> dict:
-    effective_rate = row["int_rate"] * 0.01
+    # Employment tenure feeds the dashboard's borrower stability score.
+    effective_rate = row["emp_length"] * 0.05
     return {
         "customer_id": row["customer_id"],
         "customer_name": row["customer_name"],
