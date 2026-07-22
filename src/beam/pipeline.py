@@ -68,6 +68,8 @@ from validation import is_valid
 from rm_report import format_rm_report
 from risk_scoring import is_elevated_risk, format_risk_flag
 from dashboard import format_dashboard_row, is_meaningful_exposure
+from delinquency_alerts import format_delinquency_alert
+from employer_concentration import format_employer_row
 
 PROJECT_ID = "project-ff7c2ef5-8d88-401a-b86"
 LENDING_QUERY_PATH = "resources/sql/retail_lending_portfolio.sql"
@@ -123,6 +125,24 @@ def run():
             | "FilterMeaningfulExposure" >> beam.Filter(is_meaningful_exposure)
             | "FormatDashboardRow" >> beam.Map(format_dashboard_row)
             | "PrintDashboard" >> beam.Map(lambda r: print("DASHBOARD:", r))
+        )
+
+        (
+            p
+            | "ReadDelinquencyAlerts" >> beam.io.ReadFromBigQuery(
+                query=load_query(DELINQUENCY_QUERY_PATH), use_standard_sql=True,
+            )
+            | "FormatDelinquencyAlert" >> beam.Map(format_delinquency_alert)
+            | "PrintDelinquencyAlerts" >> beam.Map(lambda r: print("DELINQUENCY:", r))
+        )
+
+        (
+            p
+            | "ReadEmployerConcentration" >> beam.io.ReadFromBigQuery(
+                query=load_query(EMPLOYER_QUERY_PATH), use_standard_sql=True,
+            )
+            | "FormatEmployerRow" >> beam.Map(format_employer_row)
+            | "PrintEmployerConcentration" >> beam.Map(lambda r: print("EMPLOYER:", r))
         )
 
 
