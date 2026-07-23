@@ -1,0 +1,11 @@
+{
+  "type": "record",
+  "name": "format_employer_row",
+  "namespace": "bq_devops_cost_guardrail",
+  "doc": "Avro schema for the Employer Concentration Beam branch. Produced by format_employer_row() in src/beam/employer_concentration.py consuming resources/sql/employer_concentration.sql. All fields nullable (BQ columns default NULLABLE). WARNING: employer_concentration.sql uses SELECT * / l.* — loan_amnt and emp_length are STRING in the raw BQ table. format_employer_row() uses both in arithmetic (loan_amnt * tenure_factor, emp_length * 0.01), which will raise TypeError. Add explicit CASTs to the SQL SELECT list to fix.",
+  "fields": [
+    {"name": "employer",               "type": ["null", "string"],  "default": null},
+    {"name": "loan_amnt",              "type": ["null", "double"],  "default": null, "doc": "Expected FLOAT64. Raw BQ column is STRING — requires CAST in SQL."},
+    {"name": "risk_weighted_exposure", "type": ["null", "double"],  "default": null, "doc": "Derived: loan_amnt * (1.05 - emp_length * 0.01)"}
+  ]
+}

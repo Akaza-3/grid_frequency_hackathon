@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "format_dashboard_row",
+  "namespace": "bq_devops_cost_guardrail",
+  "doc": "Avro schema for the Portfolio Risk Dashboard Beam branch. Produced by format_dashboard_row() in src/beam/dashboard.py consuming resources/sql/customer_risk_dashboard.sql. All fields nullable (BQ columns default NULLABLE).",
+  "fields": [
+    {"name": "avg_interest",      "type": ["null", "double"],  "default": null, "doc": "AVG(CAST(int_rate AS FLOAT64)) over customer partition"},
+    {"name": "customer_id",       "type": ["null", "string"],  "default": null},
+    {"name": "customer_name",     "type": ["null", "string"],  "default": null},
+    {"name": "effective_rate",    "type": ["null", "double"],  "default": null, "doc": "Derived: emp_length * 0.05. NOTE: emp_length is STRING in BigQuery — CAST required in SQL before this field is valid."},
+    {"name": "max_dti",           "type": ["null", "double"],  "default": null, "doc": "MAX(CAST(dti AS FLOAT64)) over customer"},
+    {"name": "max_revol_util",    "type": ["null", "double"],  "default": null, "doc": "MAX(CAST(revol_util AS FLOAT64)) over customer"},
+    {"name": "total_amount",      "type": ["null", "double"],  "default": null, "doc": "SUM(CAST(loan_amnt AS FLOAT64)) over customer"},
+    {"name": "total_loans",       "type": ["null", "long"],    "default": null, "doc": "COUNT(*) over customer"},
+    {"name": "total_outstanding", "type": ["null", "double"],  "default": null, "doc": "SUM(CAST(out_prncp AS FLOAT64)) over customer"}
+  ]
+}

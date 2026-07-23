@@ -1,0 +1,22 @@
+{
+  "type": "record",
+  "name": "format_rm_report",
+  "namespace": "bq_devops_cost_guardrail",
+  "doc": "Avro schema for the Relationship Manager Report Beam branch. Produced by format_rm_report() in src/beam/rm_report.py consuming resources/sql/retail_lending_portfolio.sql. All fields nullable (BQ columns default NULLABLE).",
+  "fields": [
+    {"name": "annual_inc",        "type": ["null", "double"],  "default": null, "doc": "CAST(annual_inc AS FLOAT64) — explicitly cast in SQL SELECT list"},
+    {"name": "avg_interest",      "type": ["null", "double"],  "default": null, "doc": "AVG(CAST(int_rate AS FLOAT64)) window over customer partition"},
+    {"name": "city",              "type": ["null", "string"],  "default": null},
+    {"name": "customer_name",     "type": ["null", "string"],  "default": null},
+    {"name": "customer_segment",  "type": ["null", "string"],  "default": null},
+    {"name": "dti",               "type": ["null", "double"],  "default": null, "doc": "CAST(dti AS FLOAT64) — explicitly cast in SQL SELECT list"},
+    {"name": "employer",          "type": ["null", "string"],  "default": null},
+    {"name": "grade",             "type": ["null", "string"],  "default": null},
+    {"name": "issue_d",           "type": ["null", "string"],  "default": null, "doc": "DATE column, represented as string in Avro"},
+    {"name": "loan_amnt",         "type": ["null", "double"],  "default": null, "doc": "CAST(loan_amnt AS FLOAT64) — explicitly cast in SQL SELECT list"},
+    {"name": "occupation",        "type": ["null", "string"],  "default": null},
+    {"name": "state",             "type": ["null", "string"],  "default": null},
+    {"name": "total_amount",      "type": ["null", "double"],  "default": null, "doc": "SUM(CAST(loan_amnt AS FLOAT64)) window over customer partition"},
+    {"name": "total_loans",       "type": ["null", "long"],    "default": null, "doc": "COUNT(*) window over customer partition"}
+  ]
+}

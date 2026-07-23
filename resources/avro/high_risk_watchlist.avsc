@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "format_watchlist_row",
+  "namespace": "bq_devops_cost_guardrail",
+  "doc": "Avro schema for the High Risk Watchlist Beam branch. Produced by format_watchlist_row() in src/beam/watchlist.py consuming resources/sql/high_risk_watchlist.sql. All fields nullable (BQ columns default NULLABLE).",
+  "fields": [
+    {"name": "customer_id",       "type": ["null", "string"],  "default": null},
+    {"name": "customer_name",     "type": ["null", "string"],  "default": null},
+    {"name": "grade",             "type": ["null", "string"],  "default": null},
+    {"name": "loan_count",        "type": ["null", "long"],    "default": null, "doc": "COUNT(*) over customer"},
+    {"name": "max_dti",           "type": ["null", "double"],  "default": null, "doc": "MAX(CAST(dti AS FLOAT64)) over customer"},
+    {"name": "max_revol_util",    "type": ["null", "double"],  "default": null, "doc": "MAX(CAST(revol_util AS FLOAT64)) over customer"},
+    {"name": "net_exposure",      "type": ["null", "double"],  "default": null, "doc": "Derived: out_prncp + total_outstanding"},
+    {"name": "sub_grade",         "type": ["null", "string"],  "default": null},
+    {"name": "total_outstanding", "type": ["null", "double"],  "default": null, "doc": "SUM(CAST(out_prncp AS FLOAT64)) over customer"}
+  ]
+}

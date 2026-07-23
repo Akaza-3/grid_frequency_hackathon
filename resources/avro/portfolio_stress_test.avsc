@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "format_stress_row",
+  "namespace": "bq_devops_cost_guardrail",
+  "doc": "Avro schema for the Portfolio Stress Test Beam branch. Produced by format_stress_row() in src/beam/stress_test.py consuming resources/sql/portfolio_stress_test.sql. All fields nullable (BQ columns default NULLABLE). KNOWN BUG: projected_loss_ratio is referenced in format_stress_row() but is NOT present in the SQL SELECT list — this will KeyError at runtime before Avro serialization. The guardrail flags this as a HIGH-severity Avro schema mismatch.",
+  "fields": [
+    {"name": "customer_id",          "type": ["null", "string"],  "default": null},
+    {"name": "customer_name",        "type": ["null", "string"],  "default": null},
+    {"name": "exposure_quintile",    "type": ["null", "long"],    "default": null, "doc": "NTILE(5) OVER (ORDER BY total_outstanding DESC)"},
+    {"name": "grade",                "type": ["null", "string"],  "default": null},
+    {"name": "loan_count",           "type": ["null", "long"],    "default": null, "doc": "COUNT(*) over customer"},
+    {"name": "projected_loss_ratio", "type": ["null", "double"],  "default": null, "doc": "MISSING from SQL output — guardrail HIGH risk. Add to SQL SELECT list or remove from format_stress_row()."},
+    {"name": "stressed_exposure",    "type": ["null", "double"],  "default": null, "doc": "total_outstanding * (1 + max_dti / 100)"},
+    {"name": "stressed_loss",        "type": ["null", "double"],  "default": null, "doc": "Derived: stressed_exposure * term_in_years / max(emp_length, 1.0)"},
+    {"name": "total_outstanding",    "type": ["null", "double"],  "default": null, "doc": "SUM(CAST(out_prncp AS FLOAT64)) over customer"}
+  ]
+}

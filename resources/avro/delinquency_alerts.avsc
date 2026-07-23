@@ -1,0 +1,14 @@
+{
+  "type": "record",
+  "name": "format_delinquency_alert",
+  "namespace": "bq_devops_cost_guardrail",
+  "doc": "Avro schema for the Delinquency Alerts Beam branch. Produced by format_delinquency_alert() in src/beam/delinquency_alerts.py consuming resources/sql/delinquency_alerts.sql. All fields nullable (BQ columns default NULLABLE). WARNING: delinquency_alerts.sql uses SELECT * — delinq_2yrs and term are STRING in the raw BQ table and arrive as STRING in the Beam row. is_severe_delinquency() compares them numerically, which will raise TypeError. Add CAST(delinq_2yrs AS INT64) and CAST(term AS INT64) to the SQL SELECT list to fix.",
+  "fields": [
+    {"name": "customer_id",              "type": ["null", "string"],  "default": null},
+    {"name": "customer_name",            "type": ["null", "string"],  "default": null},
+    {"name": "delinq_2yrs",             "type": ["null", "long"],    "default": null, "doc": "Expected INT64. Raw BQ column is STRING — requires CAST in SQL."},
+    {"name": "loan_status",             "type": ["null", "string"],  "default": null},
+    {"name": "mths_since_last_delinq",  "type": ["null", "string"],  "default": null, "doc": "Nullable STRING in BQ"},
+    {"name": "severe",                  "type": ["null", "boolean"], "default": null, "doc": "Derived: is_severe_delinquency(row) — true if delinq_2yrs > 2 AND term > 36"}
+  ]
+}
