@@ -42,16 +42,7 @@ watchlist_flagged AS (
     WHERE t.max_dti > 25 OR t.max_revol_util > 75
 )
 
-SELECT
-    customer_id,
-    customer_name,
-    grade,
-    sub_grade,
-    out_prncp,
-    max_dti,
-    max_revol_util,
-    total_outstanding,
-    loan_count
+SELECT *
 FROM watchlist_flagged
 WHERE rn = 1
 ORDER BY total_outstanding DESC

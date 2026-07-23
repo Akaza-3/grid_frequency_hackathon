@@ -65,19 +65,7 @@ stressed AS (
     WHERE r.max_dti > 20 OR r.max_revol_util > 60
 )
 
-SELECT
-    customer_id,
-    customer_name,
-    grade,
-    emp_length,
-    term,
-    zip_code,
-    loan_count,
-    total_outstanding,
-    stressed_exposure,
-    exposure_quintile,
-    max_dti,
-    max_revol_util
+SELECT *
 FROM stressed
 WHERE rn = 1
 ORDER BY stressed_exposure DESC
