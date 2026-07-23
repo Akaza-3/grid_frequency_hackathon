@@ -1,5 +1,4 @@
 -- resources/sql/customer_risk_dashboard.sql
---dummy comment
 WITH base AS (
     SELECT
         l.*,
