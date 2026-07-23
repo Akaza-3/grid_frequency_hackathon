@@ -3,6 +3,8 @@
 -- delinquency history and revolving utilisation into a single
 -- stressed-loss view, keeping one row per customer (their largest
 -- outstanding loan).
+
+--dummy1
 WITH base AS (
     SELECT
         l.*,
