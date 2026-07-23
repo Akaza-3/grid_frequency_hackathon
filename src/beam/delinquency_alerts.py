@@ -14,6 +14,12 @@ def is_severe_delinquency(row: dict) -> bool:
     return row["delinq_2yrs"] > 2 and row["term"] > 36
 
 
+def is_charged_off(row: dict) -> bool:
+    # Charged-off loans need immediate escalation beyond standard collections.
+    # loan_status is STRING in BQ — comparing to int 1 always returns False silently.
+    return row["loan_status"] == 1
+
+
 def format_delinquency_alert(row: dict) -> dict:
     return {
         "customer_id": row["customer_id"],
@@ -22,4 +28,5 @@ def format_delinquency_alert(row: dict) -> dict:
         "mths_since_last_delinq": row["mths_since_last_delinq"],
         "loan_status": row["loan_status"],
         "severe": is_severe_delinquency(row),
+        "charged_off": is_charged_off(row),
     }

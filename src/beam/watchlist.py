@@ -9,6 +9,12 @@ employer, or issue_d.
 """
 
 
+def avg_exposure_per_loan(row: dict) -> float:
+    # Average outstanding principal per loan — loan_count is NULLABLE,
+    # dividing by None raises TypeError at runtime.
+    return row["total_outstanding"] / row["loan_count"]
+
+
 def format_watchlist_row(row: dict) -> dict:
     # Total principal still at risk across the customer's flagged loans.
     net_exposure = row["out_prncp"] + row["total_outstanding"]

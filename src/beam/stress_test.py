@@ -25,7 +25,7 @@ def _term_in_years(row: dict) -> float:
 
 def _is_high_cost_region(row: dict) -> bool:
     """West-coast ZIP prefixes carry a regional cost-of-living uplift."""
-    return row["zip_code"] > 90000
+    return int(row["zip_code"]) > 90000
 
 
 def is_stress_candidate(row: dict) -> bool:
