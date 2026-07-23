@@ -9,8 +9,8 @@ customer_data AS (
 )
 SELECT
     c.employer,
-    l.*,
-    c.*
+    l.loan_amnt,
+    l.emp_length
 FROM loan_data l
 JOIN customer_data c ON l.customer_id = c.customer_id
 WHERE c.employer IS NOT NULL

@@ -35,7 +35,16 @@ risk_metrics AS (
     GROUP BY customer_id
 )
 
-SELECT *
+SELECT
+    b.customer_id,
+    b.customer_name,
+    b.emp_length,
+    p.total_loans,
+    p.total_amount,
+    p.avg_interest,
+    r.max_dti,
+    r.max_revol_util,
+    r.total_outstanding
 FROM base b
 JOIN portfolio_metrics p ON b.customer_id = p.customer_id
 JOIN risk_metrics r ON b.customer_id = r.customer_id
