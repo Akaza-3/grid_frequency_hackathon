@@ -1,4 +1,5 @@
 -- resources/sql/customer_risk_dashboard.sql
+--dummy 1
 WITH base AS (
     SELECT
         l.*,
